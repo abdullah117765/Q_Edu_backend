@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ACADEMY_OWNER
+  TEACHER
+  STUDENT
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id               String          @id @default(cuid())
+  email            String          @unique
+  password         String
+  firstName        String
+  lastName         String?
+  phoneNumber      String
+  role             Role            @default(STUDENT)
+  status           UserStatus      @default(PENDING)
+  rejectionReason  String?
+  isActive         Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  refreshTokens    RefreshToken[]
+}
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  hashedToken String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+}
