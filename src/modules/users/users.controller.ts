@@ -1,10 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
-  ApiConflictResponse,
-  ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -12,8 +10,9 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { Auth } from '../../common/decorators/auth.decorator';
-import { CreateUserDto } from './dto/create-user.dto';
+import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -26,23 +25,12 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post()
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
-  @ApiOperation({ summary: 'Create a new user' })
-  @ApiBody({ type: CreateUserDto })
-  @ApiCreatedResponse({ type: UserEntity })
-  @ApiConflictResponse({ description: 'Email already exists' })
-  @ApiBadRequestResponse({ description: 'Validation error' })
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
-  }
-
   @Get()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
-  @ApiOperation({ summary: 'List users' })
-  @ApiOkResponse({ type: [UserEntity] })
-  findAll() {
-    return this.usersService.findAll();
+  @ApiOperation({ summary: 'List users with pagination' })
+  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.usersService.findAll(query);
   }
 
   @Get(':id')

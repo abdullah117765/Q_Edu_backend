@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, Matches } from 'class-validator';
 import { Role } from '../entities/role.enum';
 
 const PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
@@ -30,10 +30,4 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-
-  @ApiPropertyOptional({ minLength: 8 })
-  @IsOptional()
-  @IsString()
-  @MinLength(8)
-  password?: string;
 }

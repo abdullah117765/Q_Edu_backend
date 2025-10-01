@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
-import { RefreshToken, User } from '@prisma/client';
-import { createHash, randomBytes } from 'crypto';
+import { PasswordResetToken, RefreshToken, Role as PrismaRole, User } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+import { createHash, randomBytes, randomInt } from 'crypto';
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { UsersService } from '../users/users.service';
@@ -11,10 +12,20 @@ import { Role } from '../users/entities/role.enum';
 import { UserEntity } from '../users/entities/user.entity';
 import { UserStatus } from '../users/entities/user-status.enum';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { MessageResponseDto } from './dto/message-response.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResendRegistrationOtpDto } from './dto/resend-registration-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyRegistrationOtpDto } from './dto/verify-registration-otp.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+const PASSWORD_SALT_ROUNDS = 12;
+const OTP_EXPIRY_MINUTES = 10;
+const RESEND_WINDOW_SECONDS = 60;
 
 @Injectable()
 export class AuthService {
@@ -23,6 +34,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly mailService: MailService,
   ) {}
 
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
@@ -41,15 +53,30 @@ export class AuthService {
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Account is disabled.');
+      throw new UnauthorizedException('Account is not active. Please verify your email.');
     }
 
     return this.issueTokensForUser(user);
   }
 
-  async register(createUserDto: CreateUserDto): Promise<AuthResponseDto> {
-    const user = await this.usersService.create(createUserDto);
-    return this.issueTokensForUser(user);
+  async register(createUserDto: CreateUserDto): Promise<MessageResponseDto> {
+    const role = createUserDto.role ?? Role.STUDENT;
+    if (role === Role.SUPER_ADMIN) {
+      const superAdminExists = await this.prisma.user.count({ where: { role: PrismaRole.SUPER_ADMIN } });
+      if (superAdminExists > 0) {
+        throw new BadRequestException('A super admin account already exists.');
+      }
+    }
+
+    const userEntity = await this.usersService.create(createUserDto);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userEntity.id } });
+
+    const otp = await this.createEmailVerificationToken(user.id);
+    await this.mailService.sendRegistrationOtp(user.email, otp);
+
+    return {
+      message: 'Registration successful. Verify the OTP sent to your email to activate your account.',
+    };
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthResponseDto> {
@@ -81,6 +108,158 @@ export class AuthService {
     await this.invalidateToken(tokenRecord);
 
     return this.issueTokensForUser(tokenRecord.user);
+  }
+
+  async resendRegistrationOtp(dto: ResendRegistrationOtpDto): Promise<MessageResponseDto> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user) {
+      return { message: 'If the account exists, a new OTP will be sent.' };
+    }
+
+    if (user.isActive) {
+      throw new BadRequestException('Account is already active.');
+    }
+
+    const existingToken = await this.prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
+    if (existingToken) {
+      const secondsSinceCreation = (Date.now() - existingToken.createdAt.getTime()) / 1000;
+      if (secondsSinceCreation < RESEND_WINDOW_SECONDS) {
+        throw new BadRequestException('OTP recently sent. Please wait before requesting another.');
+      }
+      await this.prisma.emailVerificationToken.delete({ where: { userId: user.id } });
+    }
+
+    const otp = await this.createEmailVerificationToken(user.id);
+    await this.mailService.sendRegistrationOtp(user.email, otp);
+
+    return { message: 'A new OTP has been sent to your email address.' };
+  }
+
+  async verifyRegistrationOtp(dto: VerifyRegistrationOtpDto): Promise<MessageResponseDto> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid verification request.');
+    }
+
+    const tokenRecord = await this.prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
+    if (!tokenRecord) {
+      throw new UnauthorizedException('Invalid or expired OTP.');
+    }
+
+    if (tokenRecord.consumedAt) {
+      throw new UnauthorizedException('OTP already used.');
+    }
+
+    if (tokenRecord.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.emailVerificationToken.delete({ where: { userId: user.id } });
+      throw new UnauthorizedException('OTP expired.');
+    }
+
+    if (tokenRecord.otpHash !== this.hashOtp(dto.otp)) {
+      throw new UnauthorizedException('Invalid OTP.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { isActive: true },
+      }),
+      this.prisma.emailVerificationToken.update({
+        where: { userId: user.id },
+        data: { consumedAt: new Date() },
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    ]);
+
+    return { message: 'Account verified successfully. You can now sign in.' };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user || !user.isActive) {
+      return;
+    }
+
+    await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+
+    const otp = this.generateOtp();
+    const otpHash = this.hashOtp(otp);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        otpHash,
+        expiresAt,
+      },
+    });
+
+    await this.mailService.sendPasswordResetOtp(user.email, otp);
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid password reset request.');
+    }
+
+    const tokenRecord = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        userId: user.id,
+        otpHash: this.hashOtp(dto.otp),
+        consumedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!tokenRecord) {
+      throw new UnauthorizedException('Invalid or expired OTP.');
+    }
+
+    if (tokenRecord.expiresAt.getTime() <= Date.now()) {
+      await this.invalidatePasswordResetToken(tokenRecord);
+      throw new UnauthorizedException('Invalid or expired OTP.');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, PASSWORD_SALT_ROUNDS);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: tokenRecord.id },
+        data: { consumedAt: new Date() },
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    ]);
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid user.');
+    }
+
+    const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different from the current password.');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, PASSWORD_SALT_ROUNDS);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+    ]);
   }
 
   async logout(userId: string, dto?: LogoutDto): Promise<void> {
@@ -149,12 +328,45 @@ export class AuthService {
     return token;
   }
 
+  private async createEmailVerificationToken(userId: string): Promise<string> {
+    await this.prisma.emailVerificationToken.deleteMany({ where: { userId } });
+
+    const otp = this.generateOtp();
+    const otpHash = this.hashOtp(otp);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId,
+        otpHash,
+        expiresAt,
+      },
+    });
+
+    return otp;
+  }
+
   private async invalidateToken(tokenRecord: RefreshToken): Promise<void> {
     await this.prisma.refreshToken.delete({ where: { id: tokenRecord.id } });
   }
 
+  private async invalidatePasswordResetToken(token: PasswordResetToken): Promise<void> {
+    await this.prisma.passwordResetToken.update({
+      where: { id: token.id },
+      data: { consumedAt: new Date() },
+    });
+  }
+
   private hashRefreshToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private hashOtp(otp: string): string {
+    return createHash('sha256').update(otp).digest('hex');
+  }
+
+  private generateOtp(): string {
+    return randomInt(100000, 1000000).toString();
   }
 
   private signToken(payload: JwtPayload): Promise<string> {

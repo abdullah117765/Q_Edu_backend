@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { Prisma, Role as PrismaRole, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -21,8 +23,15 @@ export class UsersService {
       throw new ConflictException('Email address is already in use.');
     }
 
-    const hashedPassword = await this.hashPassword(dto.password);
     const role = dto.role ?? Role.STUDENT;
+    if (role === Role.SUPER_ADMIN) {
+      const superAdminCount = await this.prisma.user.count({ where: { role: PrismaRole.SUPER_ADMIN } });
+      if (superAdminCount > 0) {
+        throw new ConflictException('A super admin already exists.');
+      }
+    }
+
+    const hashedPassword = await this.hashPassword(dto.password);
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -32,16 +41,40 @@ export class UsersService {
         phoneNumber: dto.phoneNumber,
         role,
         status: role === Role.SUPER_ADMIN ? UserStatus.APPROVED : undefined,
-        isActive: role === Role.SUPER_ADMIN ? true : undefined,
+        isActive: false,
       },
     });
 
     return this.toEntity(user);
   }
 
-  async findAll(): Promise<UserEntity[]> {
-    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
-    return users.map((user) => this.toEntity(user));
+  async findAll(pagination: PaginationQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    const { page, limit } = pagination;
+    const skip = (page - 1) * limit;
+
+    const [total, users] = await this.prisma.$transaction([
+      this.prisma.user.count(),
+      this.prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const data = users.map((user) => this.toEntity(user));
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+    return {
+      data,
+      meta: {
+        total,
+        count: data.length,
+        nextPage: page < totalPages ? page + 1 : null,
+        previousPage: page > 1 ? page - 1 : null,
+        currentPage: page,
+        totalPages,
+      },
+    };
   }
 
   async findOne(id: string): Promise<UserEntity> {
@@ -62,6 +95,10 @@ export class UsersService {
       throw new NotFoundException('User not found.');
     }
 
+    if (dto.role === Role.SUPER_ADMIN && existing.role !== PrismaRole.SUPER_ADMIN) {
+      throw new BadRequestException('Cannot promote user to super admin.');
+    }
+
     const data: Prisma.UserUpdateInput = {
       firstName: dto.firstName ?? existing.firstName,
       lastName: dto.lastName ?? existing.lastName,
@@ -69,10 +106,6 @@ export class UsersService {
       role: dto.role ?? existing.role,
       isActive: dto.isActive ?? existing.isActive,
     };
-
-    if (dto.password) {
-      data.password = await this.hashPassword(dto.password);
-    }
 
     const user = await this.prisma.user.update({
       where: { id },
@@ -100,7 +133,7 @@ export class UsersService {
       updateData.isActive = false;
     } else {
       updateData.rejectionReason = null;
-      updateData.isActive = dto.status === UserStatus.APPROVED;
+      updateData.isActive = dto.status === UserStatus.APPROVED ? true : existing.isActive;
     }
 
     const user = await this.prisma.user.update({
