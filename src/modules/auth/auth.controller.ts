@@ -4,7 +4,6 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
-  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -86,7 +85,7 @@ export class AuthController {
   @ApiOkResponse({ type: MessageResponseDto, description: 'OTP dispatched if the account exists' })
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
     await this.authService.forgotPassword(dto);
-    return { message: 'If the account exists, an OTP has been sent to the registered email.' };
+    return { message: 'OTP has been sent to the registered email.' };
   }
 
   @Post('reset-password')
@@ -103,25 +102,26 @@ export class AuthController {
   @Patch('change-password')
   @ApiBearerAuth()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
-  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Update the authenticated user password' })
   @ApiBody({ type: ChangePasswordDto })
-  @ApiNoContentResponse({ description: 'Password updated successfully' })
+  @ApiOkResponse({ type: MessageResponseDto })
   @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
-  async changePassword(@Req() req: Request, @Body() dto: ChangePasswordDto): Promise<void> {
+  async changePassword(@Req() req: Request, @Body() dto: ChangePasswordDto): Promise<MessageResponseDto> {
     const user = req['user'] as UserEntity;
     await this.authService.changePassword(user.id, dto);
+    return { message: 'Password updated successfully.' };
   }
 
   @Post('logout')
   @ApiBearerAuth()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
-  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke refresh tokens for the authenticated user' })
   @ApiBody({ type: LogoutDto, required: false })
-  @ApiNoContentResponse({ description: 'Refresh tokens revoked' })
-  async logout(@Req() req: Request, @Body() dto?: LogoutDto): Promise<void> {
+  @ApiOkResponse({ type: MessageResponseDto })
+  async logout(@Req() req: Request, @Body() dto?: LogoutDto): Promise<MessageResponseDto> {
     const user = req['user'] as UserEntity;
     await this.authService.logout(user.id, dto);
+    return { message: 'Refresh tokens revoked.' };
   }
 }
+

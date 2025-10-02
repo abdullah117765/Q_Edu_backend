@@ -34,19 +34,21 @@ export class MailService {
     });
   }
 
-  async sendMail(options: MailOptions): Promise<void> {
+  async sendMail(options: MailOptions): Promise<boolean> {
     try {
       await this.transporter.sendMail({
         from: this.fromAddress,
         ...options,
       });
+      return true;
     } catch (error) {
-      this.logger.error(`Failed to send email to ${options.to}`, error instanceof Error ? error.stack : error);
-      throw error;
+      const details = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to send email to ${options.to}`, details);
+      return false;
     }
   }
 
-  async sendPasswordResetOtp(to: string, otp: string): Promise<void> {
+  async sendPasswordResetOtp(to: string, otp: string): Promise<boolean> {
     const subject = 'Password Reset Request';
     const html = `
       <p>Hello,</p>
@@ -56,10 +58,10 @@ export class MailService {
       <p>Regards,<br/>Q Edu Team</p>
     `;
 
-    await this.sendMail({ to, subject, html });
+    return this.sendMail({ to, subject, html });
   }
 
-  async sendRegistrationOtp(to: string, otp: string): Promise<void> {
+  async sendRegistrationOtp(to: string, otp: string): Promise<boolean> {
     const subject = 'Verify your Q Edu account';
     const html = `
       <p>Welcome to Q Edu!</p>
@@ -70,6 +72,6 @@ export class MailService {
       <p>Regards,<br/>Q Edu Team</p>
     `;
 
-    await this.sendMail({ to, subject, html });
+    return this.sendMail({ to, subject, html });
   }
 }

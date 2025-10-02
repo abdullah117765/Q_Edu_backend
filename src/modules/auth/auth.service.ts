@@ -1,16 +1,22 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { PasswordResetToken, RefreshToken, Role as PrismaRole, User } from '@prisma/client';
+import { PasswordResetToken, Role as PrismaRole, RefreshToken, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomInt } from 'crypto';
-import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
-import { UsersService } from '../users/users.service';
 import { Role } from '../users/entities/role.enum';
-import { UserEntity } from '../users/entities/user.entity';
 import { UserStatus } from '../users/entities/user-status.enum';
+import { UserEntity } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -29,6 +35,8 @@ const RESEND_WINDOW_SECONDS = 60;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -72,7 +80,10 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userEntity.id } });
 
     const otp = await this.createEmailVerificationToken(user.id);
-    await this.mailService.sendRegistrationOtp(user.email, otp);
+    const mailSent = await this.mailService.sendRegistrationOtp(user.email, otp);
+    if (!mailSent) {
+      this.logger.warn(`Registration email delivery failed for ${user.email}`);
+    }
 
     return {
       message: 'Registration successful. Verify the OTP sent to your email to activate your account.',
@@ -113,7 +124,7 @@ export class AuthService {
   async resendRegistrationOtp(dto: ResendRegistrationOtpDto): Promise<MessageResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user) {
-      return { message: 'If the account exists, a new OTP will be sent.' };
+      throw new NotFoundException('No account found for the provided email address.');
     }
 
     if (user.isActive) {
@@ -130,7 +141,10 @@ export class AuthService {
     }
 
     const otp = await this.createEmailVerificationToken(user.id);
-    await this.mailService.sendRegistrationOtp(user.email, otp);
+    const mailSent = await this.mailService.sendRegistrationOtp(user.email, otp);
+    if (!mailSent) {
+      this.logger.warn(`Registration email delivery failed for ${user.email}`);
+    }
 
     return { message: 'A new OTP has been sent to your email address.' };
   }
@@ -138,7 +152,7 @@ export class AuthService {
   async verifyRegistrationOtp(dto: VerifyRegistrationOtpDto): Promise<MessageResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user) {
-      throw new UnauthorizedException('Invalid verification request.');
+      throw new NotFoundException('No account found for the provided email address.');
     }
 
     const tokenRecord = await this.prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
@@ -176,8 +190,12 @@ export class AuthService {
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user || !user.isActive) {
-      return;
+    if (!user) {
+      throw new NotFoundException('No account found for the provided email address.');
+    }
+
+    if (!user.isActive) {
+      throw new BadRequestException('Account is not active. Complete email verification before resetting the password.');
     }
 
     await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
@@ -194,13 +212,19 @@ export class AuthService {
       },
     });
 
-    await this.mailService.sendPasswordResetOtp(user.email, otp);
+    this.logger.log(`Password reset OTP for user ${user.id}: ${otp}`);
+    console.log(`[OTP][PasswordReset] user=${user.id} otp=${otp}`);
+
+    const mailSent = await this.mailService.sendPasswordResetOtp(user.email, otp);
+    if (!mailSent) {
+      this.logger.warn(`Password reset email delivery failed for ${user.email}`);
+    }
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user) {
-      throw new UnauthorizedException('Invalid password reset request.');
+      throw new NotFoundException('No account found for the provided email address.');
     }
 
     const tokenRecord = await this.prisma.passwordResetToken.findFirst({
@@ -239,7 +263,7 @@ export class AuthService {
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      throw new UnauthorizedException('Invalid user.');
+      throw new NotFoundException('User not found.');
     }
 
     const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
@@ -342,6 +366,9 @@ export class AuthService {
         expiresAt,
       },
     });
+
+    this.logger.log(`Registration OTP for user ${userId}: ${otp}`);
+    console.log(`[OTP][Registration] user=${userId} otp=${otp}`);
 
     return otp;
   }

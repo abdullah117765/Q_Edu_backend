@@ -80,7 +80,7 @@ export class UsersService {
   async findOne(id: string): Promise<UserEntity> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException('User with the specified id was not found.');
     }
     return this.toEntity(user);
   }
@@ -92,7 +92,7 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto): Promise<UserEntity> {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException('User with the specified id was not found.');
     }
 
     if (dto.role === Role.SUPER_ADMIN && existing.role !== PrismaRole.SUPER_ADMIN) {
@@ -118,7 +118,7 @@ export class UsersService {
   async updateStatus(id: string, dto: UpdateUserStatusDto): Promise<UserEntity> {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException('User with the specified id was not found.');
     }
 
     const updateData: Prisma.UserUpdateInput = {
@@ -147,7 +147,7 @@ export class UsersService {
   async remove(id: string): Promise<void> {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException('User with the specified id was not found.');
     }
 
     await this.prisma.user.delete({ where: { id } });
