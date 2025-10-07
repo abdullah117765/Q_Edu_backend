@@ -5,8 +5,10 @@ import { validationSchema } from './config/validation';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
+import { ClassesModule } from './modules/classes/classes.module';
 import { MailModule } from './modules/mail/mail.module';
 import { UsersModule } from './modules/users/users.module';
+import { ZoomCreditsModule } from './modules/zoom-credits/zoom-credits.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -23,6 +25,8 @@ import { PrismaModule } from './prisma/prisma.module';
     MailModule,
     AuthModule,
     UsersModule,
+    ClassesModule,
+    ZoomCreditsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

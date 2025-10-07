@@ -13,4 +13,9 @@ export const validationSchema = Joi.object({
   SMTP_PASSWORD: Joi.string().required(),
   SMTP_SECURE: Joi.boolean().truthy('true').falsy('false').default(false),
   SMTP_FROM: Joi.string().email().required(),
+  ZOOM_ACCOUNT_ID: Joi.string().required(),
+  ZOOM_CLIENT_ID: Joi.string().required(),
+  ZOOM_CLIENT_SECRET: Joi.string().required(),
+  ZOOM_API_BASE_URL: Joi.string().uri().default('https://api.zoom.us/v2'),
+  ZOOM_OAUTH_URL: Joi.string().uri().default('https://zoom.us/oauth/token'),
 });

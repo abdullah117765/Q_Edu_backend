@@ -20,22 +20,58 @@ enum UserStatus {
   REJECTED
 }
 
+enum ClassStatus {
+  UPCOMING
+  ONGOING
+  ENDED
+  CANCELLED
+}
+
+enum ClassParticipantRole {
+  TEACHER
+  STUDENT
+  GUEST
+}
+
+enum ZoomCreditTransactionType {
+  CREDIT
+  DEBIT
+  TRANSFER_OUT
+  TRANSFER_IN
+}
+
+enum ZoomCreditAuditAction {
+  CREATED
+  UPDATED
+  REVERSED
+}
+
 model User {
-  id                   String                 @id @default(cuid())
-  email                String                 @unique
-  password             String
-  firstName            String
-  lastName             String?
-  phoneNumber          String
-  role                 Role                   @default(STUDENT)
-  status               UserStatus             @default(PENDING)
-  rejectionReason      String?
-  isActive             Boolean                @default(false)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  refreshTokens        RefreshToken[]
-  passwordResetTokens  PasswordResetToken[]
-  emailVerification    EmailVerificationToken?
+  id                                 String                  @id @default(cuid())
+  email                              String                  @unique
+  password                           String
+  firstName                          String
+  lastName                           String?
+  phoneNumber                        String
+  role                               Role                    @default(STUDENT)
+  status                             UserStatus              @default(PENDING)
+  rejectionReason                    String?
+  isActive                           Boolean                 @default(false)
+  zoomUserId                         String?                 @unique
+  createdAt                          DateTime                @default(now())
+  updatedAt                          DateTime                @updatedAt
+  refreshTokens                      RefreshToken[]
+  passwordResetTokens                PasswordResetToken[]
+  emailVerification                  EmailVerificationToken?
+  teachingClasses                    Class[]
+  classParticipants                  ClassParticipant[]
+  zoomCreditBalance                  ZoomCreditBalance?
+  zoomCreditTransactions             ZoomCreditTransaction[] @relation("ZoomCreditOwner")
+  zoomCreditCounterpartyTransactions ZoomCreditTransaction[] @relation("ZoomCreditCounterparty")
+  zoomCreditAuditLogs                ZoomCreditAuditLog[]    @relation("ZoomCreditAuditActor")
+
+  @@index([role])
+  @@index([status])
 }
 
 model RefreshToken {
@@ -52,26 +88,121 @@ model RefreshToken {
 }
 
 model PasswordResetToken {
-  id          String   @id @default(cuid())
-  otpHash     String
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt   DateTime
-  consumedAt  DateTime?
-  createdAt   DateTime @default(now())
+  id         String    @id @default(cuid())
+  otpHash    String
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model EmailVerificationToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   otpHash    String
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt  DateTime
   consumedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([expiresAt])
+}
+
+model Class {
+  id                     String                  @id @default(cuid())
+  title                  String
+  description            String?
+  teacherId              String
+  teacher                User                    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  status                 ClassStatus             @default(UPCOMING)
+  scheduledStart         DateTime
+  scheduledEnd           DateTime
+  durationMinutes        Int
+  timezone               String
+  creditsConsumed        Int?
+  zoomMeetingId          String?                 @unique
+  zoomHostId             String?
+  zoomJoinUrl            String?
+  zoomStartUrl           String?
+  zoomPassword           String?
+  zoomUuid               String?
+  metadata               Json?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  participants           ClassParticipant[]
+  zoomCreditTransactions ZoomCreditTransaction[]
+
+  @@index([teacherId])
+  @@index([scheduledStart])
+  @@index([status, scheduledStart])
+  @@index([zoomMeetingId])
+}
+
+model ClassParticipant {
+  id                  String               @id @default(cuid())
+  classId             String
+  userId              String?
+  zoomParticipantUuid String?
+  email               String?
+  displayName         String?
+  role                ClassParticipantRole @default(STUDENT)
+  joinTime            DateTime?
+  leaveTime           DateTime?
+  durationSeconds     Int?
+  metadata            Json?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  class               Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([classId, zoomParticipantUuid])
+  @@index([classId])
+  @@index([userId])
+  @@index([zoomParticipantUuid])
+}
+
+model ZoomCreditBalance {
+  userId    String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ZoomCreditTransaction {
+  id             String                    @id @default(cuid())
+  userId         String
+  relatedUserId  String?
+  classId        String?
+  type           ZoomCreditTransactionType
+  amount         Int
+  runningBalance Int
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime                  @default(now())
+  user           User                      @relation("ZoomCreditOwner", fields: [userId], references: [id], onDelete: Cascade)
+  relatedUser    User?                     @relation("ZoomCreditCounterparty", fields: [relatedUserId], references: [id], onDelete: SetNull)
+  class          Class?                    @relation(fields: [classId], references: [id], onDelete: SetNull)
+  auditLogs      ZoomCreditAuditLog[]
+
+  @@index([userId, createdAt])
+  @@index([classId])
+  @@index([relatedUserId])
+}
+
+model ZoomCreditAuditLog {
+  id            String                @id @default(cuid())
+  transactionId String
+  actorId       String?
+  action        ZoomCreditAuditAction @default(CREATED)
+  details       Json?
+  createdAt     DateTime              @default(now())
+  transaction   ZoomCreditTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  actor         User?                 @relation("ZoomCreditAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([actorId])
 }

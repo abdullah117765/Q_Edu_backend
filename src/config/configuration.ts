@@ -19,4 +19,11 @@ export default () => ({
     secure: (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true',
     from: process.env.SMTP_FROM ?? '',
   },
+  zoom: {
+    accountId: process.env.ZOOM_ACCOUNT_ID ?? '',
+    clientId: process.env.ZOOM_CLIENT_ID ?? '',
+    clientSecret: process.env.ZOOM_CLIENT_SECRET ?? '',
+    apiBaseUrl: process.env.ZOOM_API_BASE_URL ?? 'https://api.zoom.us/v2',
+    oauthUrl: process.env.ZOOM_OAUTH_URL ?? 'https://zoom.us/oauth/token',
+  },
 });
