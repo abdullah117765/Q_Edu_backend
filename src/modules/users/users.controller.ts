@@ -12,9 +12,9 @@ import {
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
-import { CreateStudentDto } from './dto/create-student.dto';
+import { CreateStudentDto } from './dto/create-student.dto';\r\nimport { CreateTeacherDto } from './dto/create-teacher.dto';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
-import { StudentsQueryDto } from './dto/students-query.dto';
+import { StudentsQueryDto } from './dto/students-query.dto';\r\nimport { TeachersQueryDto } from './dto/teachers-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -95,4 +95,5 @@ export class UsersController {
     return { message: 'User deleted successfully.' };
   }
 }
+
 

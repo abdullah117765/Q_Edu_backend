@@ -7,7 +7,7 @@ jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
 }));
 
-describe('UsersService - student onboarding', () => {
+describe('UsersService - onboarding', () => {
   const prismaMock = {
     user: {
       findUnique: jest.fn(),
