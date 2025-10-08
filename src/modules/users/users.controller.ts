@@ -12,7 +12,9 @@ import {
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
+import { CreateStudentDto } from './dto/create-student.dto';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
+import { StudentsQueryDto } from './dto/students-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -24,6 +26,22 @@ import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Post('students')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @ApiOperation({ summary: 'Create a new student account' })
+  @ApiCreatedResponse({ type: UserEntity })
+  createStudent(@Body() dto: CreateStudentDto) {
+    return this.usersService.createStudent(dto);
+  }
+
+  @Get('students')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @ApiOperation({ summary: 'List students with pagination and filters' })
+  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  findStudents(@Query() query: StudentsQueryDto) {
+    return this.usersService.findStudents(query);
+  }
 
   @Get()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
@@ -77,3 +95,4 @@ export class UsersController {
     return { message: 'User deleted successfully.' };
   }
 }
+

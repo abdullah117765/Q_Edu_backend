@@ -5,6 +5,8 @@ import { PaginatedResponse } from '../../common/interfaces/pagination.interface'
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CreateStudentDto } from './dto/create-student.dto';
+import { StudentsQueryDto } from './dto/students-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -48,6 +50,11 @@ export class UsersService {
     return this.toEntity(user);
   }
 
+  async createStudent(dto: CreateStudentDto): Promise<UserEntity> {
+    return this.create({ ...dto, role: Role.STUDENT });
+  }
+
+
   async findAll(pagination: PaginationQueryDto): Promise<PaginatedResponse<UserEntity>> {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
@@ -76,6 +83,45 @@ export class UsersService {
       },
     };
   }
+
+  async findStudents(query: StudentsQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    const where: Prisma.UserWhereInput = {
+      role: Role.STUDENT,
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search } },
+        { lastName: { contains: search } },
+        { email: { contains: search } },
+      ];
+    }
+    const skip = (query.page - 1) * query.limit;
+    const [total, users] = await this.prisma.$transaction([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: query.limit,
+      }),
+    ]);
+    const data = users.map((user) => this.toEntity(user));
+    const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
+    return {
+      data,
+      meta: {
+        total,
+        count: data.length,
+        nextPage: query.page < totalPages ? query.page + 1 : null,
+        previousPage: query.page > 1 ? query.page - 1 : null,
+        currentPage: query.page,
+        totalPages,
+      },
+    };
+  }
+
 
   async findOne(id: string): Promise<UserEntity> {
     const user = await this.prisma.user.findUnique({ where: { id } });
@@ -162,3 +208,4 @@ export class UsersService {
     return new UserEntity(rest);
   }
 }
+

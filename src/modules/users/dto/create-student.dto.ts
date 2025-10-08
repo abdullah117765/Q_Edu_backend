@@ -1,10 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
-import { Role } from '../entities/role.enum';
+import { IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { PHONE_REGEX } from './phone-regex.constant';
 
-export class CreateUserDto {
-  @ApiProperty({ example: 'user@example.com' })
+export class CreateStudentDto {
+  @ApiProperty({ example: 'student@example.com' })
   @IsEmail()
   email!: string;
 
@@ -13,11 +12,11 @@ export class CreateUserDto {
   @MinLength(8)
   password!: string;
 
-  @ApiProperty({ example: 'Jane' })
+  @ApiProperty({ example: 'Alex' })
   @IsString()
   firstName!: string;
 
-  @ApiPropertyOptional({ example: 'Doe' })
+  @ApiPropertyOptional({ example: 'Johnson' })
   @IsOptional()
   @IsString()
   lastName?: string;
@@ -25,14 +24,9 @@ export class CreateUserDto {
   @ApiProperty({
     example: '+1 555 123 4567',
     pattern: PHONE_REGEX.source,
-    description: 'Contact number for account verification',
+    description: 'Student contact number',
   })
   @IsString()
   @Matches(PHONE_REGEX, { message: 'phoneNumber must contain only digits, spaces, and valid symbols' })
   phoneNumber!: string;
-
-  @ApiPropertyOptional({ enum: Role, description: 'Role assigned to the user' })
-  @IsOptional()
-  @IsEnum(Role)
-  role?: Role;
 }
