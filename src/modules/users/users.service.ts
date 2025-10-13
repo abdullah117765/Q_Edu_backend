@@ -4,9 +4,13 @@ import * as bcrypt from 'bcrypt';
 import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { CreateTeacherDto } from './dto/create-teacher.dto';
+import { CreateUserDto } from './dto/create-user.dto';
+import { AdminsQueryDto } from './dto/admins-query.dto';
 import { StudentsQueryDto } from './dto/students-query.dto';
+import { TeachersQueryDto } from './dto/teachers-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -14,6 +18,8 @@ import { UserStatus } from './entities/user-status.enum';
 import { UserEntity } from './entities/user.entity';
 
 const PASSWORD_SALT_ROUNDS = 12;
+
+type RoleQueryDto = AdminsQueryDto | TeachersQueryDto | StudentsQueryDto;
 
 @Injectable()
 export class UsersService {
@@ -50,10 +56,17 @@ export class UsersService {
     return this.toEntity(user);
   }
 
-  async createStudent(dto: CreateStudentDto): Promise<UserEntity> {
-    return this.create({ ...dto, role: Role.STUDENT });
+  async createAdmin(dto: CreateAdminDto): Promise<UserEntity> {
+    return this.create({ ...(dto as CreateUserDto), role: Role.ACADEMY_OWNER });
   }
 
+  async createTeacher(dto: CreateTeacherDto): Promise<UserEntity> {
+    return this.create({ ...(dto as CreateUserDto), role: Role.TEACHER });
+  }
+
+  async createStudent(dto: CreateStudentDto): Promise<UserEntity> {
+    return this.create({ ...(dto as CreateUserDto), role: Role.STUDENT });
+  }
 
   async findAll(pagination: PaginationQueryDto): Promise<PaginatedResponse<UserEntity>> {
     const { page, limit } = pagination;
@@ -84,44 +97,17 @@ export class UsersService {
     };
   }
 
-  async findStudents(query: StudentsQueryDto): Promise<PaginatedResponse<UserEntity>> {
-    const where: Prisma.UserWhereInput = {
-      role: Role.STUDENT,
-      ...(query.status ? { status: query.status } : {}),
-    };
-    const search = query.search?.trim();
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { email: { contains: search } },
-      ];
-    }
-    const skip = (query.page - 1) * query.limit;
-    const [total, users] = await this.prisma.$transaction([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: query.limit,
-      }),
-    ]);
-    const data = users.map((user) => this.toEntity(user));
-    const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
-    return {
-      data,
-      meta: {
-        total,
-        count: data.length,
-        nextPage: query.page < totalPages ? query.page + 1 : null,
-        previousPage: query.page > 1 ? query.page - 1 : null,
-        currentPage: query.page,
-        totalPages,
-      },
-    };
+  async findAdmins(query: AdminsQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    return this.findByRole(Role.ACADEMY_OWNER, query);
   }
 
+  async findTeachers(query: TeachersQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    return this.findByRole(Role.TEACHER, query);
+  }
+
+  async findStudents(query: StudentsQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    return this.findByRole(Role.STUDENT, query);
+  }
 
   async findOne(id: string): Promise<UserEntity> {
     const user = await this.prisma.user.findUnique({ where: { id } });
@@ -197,6 +183,48 @@ export class UsersService {
     }
 
     await this.prisma.user.delete({ where: { id } });
+  }
+
+  private async findByRole(role: Role, query: RoleQueryDto): Promise<PaginatedResponse<UserEntity>> {
+    const where: Prisma.UserWhereInput = {
+      role,
+      ...(query.status ? { status: query.status } : {}),
+    };
+
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search,  } },
+        { lastName: { contains: search,  } },
+        { email: { contains: search,  } },
+      ];
+    }
+
+    const skip = (query.page - 1) * query.limit;
+    const [total, users] = await this.prisma.$transaction([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: query.limit,
+      }),
+    ]);
+
+    const data = users.map((user) => this.toEntity(user));
+    const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
+
+    return {
+      data,
+      meta: {
+        total,
+        count: data.length,
+        nextPage: query.page < totalPages ? query.page + 1 : null,
+        previousPage: query.page > 1 ? query.page - 1 : null,
+        currentPage: query.page,
+        totalPages,
+      },
+    };
   }
 
   private async hashPassword(password: string): Promise<string> {

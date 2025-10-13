@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -12,9 +13,13 @@ import {
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
-import { CreateStudentDto } from './dto/create-student.dto';\r\nimport { CreateTeacherDto } from './dto/create-teacher.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
+import { CreateStudentDto } from './dto/create-student.dto';
+import { CreateTeacherDto } from './dto/create-teacher.dto';
+import { AdminsQueryDto } from './dto/admins-query.dto';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
-import { StudentsQueryDto } from './dto/students-query.dto';\r\nimport { TeachersQueryDto } from './dto/teachers-query.dto';
+import { StudentsQueryDto } from './dto/students-query.dto';
+import { TeachersQueryDto } from './dto/teachers-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
@@ -27,12 +32,44 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Post('admins')
+  @Auth(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Create a new admin account' })
+  @ApiCreatedResponse({ type: UserEntity })
+  createAdmin(@Body() dto: CreateAdminDto) {
+    return this.usersService.createAdmin(dto);
+  }
+
+  @Post('teachers')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @ApiOperation({ summary: 'Create a new teacher account' })
+  @ApiCreatedResponse({ type: UserEntity })
+  createTeacher(@Body() dto: CreateTeacherDto) {
+    return this.usersService.createTeacher(dto);
+  }
+
   @Post('students')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'Create a new student account' })
   @ApiCreatedResponse({ type: UserEntity })
   createStudent(@Body() dto: CreateStudentDto) {
     return this.usersService.createStudent(dto);
+  }
+
+  @Get('admins')
+  @Auth(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'List admins with pagination and filters' })
+  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  findAdmins(@Query() query: AdminsQueryDto) {
+    return this.usersService.findAdmins(query);
+  }
+
+  @Get('teachers')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @ApiOperation({ summary: 'List teachers with pagination and filters' })
+  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  findTeachers(@Query() query: TeachersQueryDto) {
+    return this.usersService.findTeachers(query);
   }
 
   @Get('students')
@@ -95,5 +132,3 @@ export class UsersController {
     return { message: 'User deleted successfully.' };
   }
 }
-
-
