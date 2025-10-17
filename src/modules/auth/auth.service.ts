@@ -402,4 +402,42 @@ export class AuthService {
       expiresIn: this.configService.get<string>('auth.jwtAccessExpiresIn'),
     });
   }
+
+  getAccessTokenTtlMs(): number {
+    const raw = this.configService.get<string>('auth.jwtAccessExpiresIn') ?? '15m';
+    return this.parseDurationToMilliseconds(raw);
+  }
+
+  getRefreshTokenTtlMs(): number {
+    const ttlSeconds = this.configService.get<number>('auth.refreshTokenTtlSeconds') ?? 604800;
+    return ttlSeconds * 1000;
+  }
+
+  private parseDurationToMilliseconds(input: string): number {
+    if (!input) {
+      return 15 * 60 * 1000;
+    }
+
+    const trimmed = input.trim();
+    const match = /^(\d+)([smhd])$/i.exec(trimmed);
+    if (match) {
+      const value = parseInt(match[1], 10);
+      const unit = match[2].toLowerCase();
+      const factor: Record<string, number> = {
+        s: 1000,
+        m: 60 * 1000,
+        h: 60 * 60 * 1000,
+        d: 24 * 60 * 60 * 1000,
+      };
+      const multiplier = factor[unit] ?? factor.m;
+      return value * multiplier;
+    }
+
+    const numeric = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric * 1000;
+    }
+
+    return 15 * 60 * 1000;
+  }
 }

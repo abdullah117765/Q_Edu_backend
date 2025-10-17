@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Patch, Post, Req, Res } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -9,7 +9,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { CookieOptions, Request, Response } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { Role } from '../users/entities/role.enum';
@@ -29,15 +30,23 @@ import { VerifyRegistrationOtpDto } from './dto/verify-registration-otp.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('login')
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials or account not approved' })
-  login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    const payload = await this.authService.login(loginDto);
+    this.setAuthCookies(res, payload);
+    return payload;
   }
 
   @Post('register')
@@ -74,8 +83,13 @@ export class AuthController {
   @ApiBody({ type: RefreshTokenDto })
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired refresh token' })
-  refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
-    return this.authService.refresh(dto);
+  async refresh(
+    @Body() dto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    const payload = await this.authService.refresh(dto);
+    this.setAuthCookies(res, payload);
+    return payload;
   }
 
   @Post('forgot-password')
@@ -118,10 +132,66 @@ export class AuthController {
   @ApiOperation({ summary: 'Revoke refresh tokens for the authenticated user' })
   @ApiBody({ type: LogoutDto, required: false })
   @ApiOkResponse({ type: MessageResponseDto })
-  async logout(@Req() req: Request, @Body() dto?: LogoutDto): Promise<MessageResponseDto> {
+  async logout(
+    @Req() req: Request,
+    @Body() dto: LogoutDto | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<MessageResponseDto> {
     const user = req['user'] as UserEntity;
     await this.authService.logout(user.id, dto);
+    this.clearAuthCookies(res);
     return { message: 'Refresh tokens revoked.' };
+  }
+
+  private setAuthCookies(res: Response, payload: AuthResponseDto): void {
+    const accessTokenCookieName =
+      this.configService.get<string>('auth.accessTokenCookieName') ?? 'qedu_access_token';
+    const refreshTokenCookieName =
+      this.configService.get<string>('auth.refreshTokenCookieName') ?? 'qedu_refresh_token';
+
+    const accessTokenMaxAge = this.authService.getAccessTokenTtlMs();
+    const refreshTokenMaxAge = this.authService.getRefreshTokenTtlMs();
+
+    res.cookie(accessTokenCookieName, payload.accessToken, this.buildCookieOptions(accessTokenMaxAge));
+    res.cookie(
+      refreshTokenCookieName,
+      payload.refreshToken,
+      this.buildCookieOptions(refreshTokenMaxAge),
+    );
+  }
+
+  private clearAuthCookies(res: Response): void {
+    const accessTokenCookieName =
+      this.configService.get<string>('auth.accessTokenCookieName') ?? 'qedu_access_token';
+    const refreshTokenCookieName =
+      this.configService.get<string>('auth.refreshTokenCookieName') ?? 'qedu_refresh_token';
+
+    const baseOptions = this.buildCookieOptions(0);
+    res.clearCookie(accessTokenCookieName, baseOptions);
+    res.clearCookie(refreshTokenCookieName, baseOptions);
+  }
+
+  private buildCookieOptions(maxAge: number): CookieOptions {
+    const secure = this.configService.get<boolean>('auth.cookieSecure') ?? true;
+    const sameSite = (this.configService.get<string>('auth.cookieSameSite') ?? 'lax') as
+      | CookieOptions['sameSite'];
+    const domain = this.configService.get<string | undefined>('auth.cookieDomain') ?? undefined;
+
+    const options: CookieOptions = {
+      httpOnly: true,
+      secure,
+      sameSite,
+      domain,
+      path: '/',
+    };
+
+    if (Number.isFinite(maxAge) && maxAge > 0) {
+      options.maxAge = maxAge;
+    } else {
+      options.expires = new Date(0);
+    }
+
+    return options;
   }
 }
 

@@ -7,6 +7,11 @@ export const validationSchema = Joi.object({
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_TTL_SECONDS: Joi.number().integer().positive().default(604800),
+  AUTH_ACCESS_TOKEN_COOKIE_NAME: Joi.string().default('qedu_access_token'),
+  AUTH_REFRESH_TOKEN_COOKIE_NAME: Joi.string().default('qedu_refresh_token'),
+  AUTH_COOKIE_DOMAIN: Joi.string().allow('').optional(),
+  AUTH_COOKIE_SECURE: Joi.boolean().truthy('true').falsy('false').default(true),
+  AUTH_COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
   SMTP_HOST: Joi.string().required(),
   SMTP_PORT: Joi.number().integer().positive().default(587),
   SMTP_USER: Joi.string().required(),
@@ -18,4 +23,6 @@ export const validationSchema = Joi.object({
   ZOOM_CLIENT_SECRET: Joi.string().required(),
   ZOOM_API_BASE_URL: Joi.string().uri().default('https://api.zoom.us/v2'),
   ZOOM_OAUTH_URL: Joi.string().uri().default('https://zoom.us/oauth/token'),
+  CORS_ALLOWED_ORIGINS: Joi.string().allow('').optional(),
+  ALLOWED_ORIGINS: Joi.string().allow('').optional(),
 });

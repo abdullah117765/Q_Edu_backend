@@ -10,6 +10,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { UsersModule } from './modules/users/users.module';
 import { ZoomCreditsModule } from './modules/zoom-credits/zoom-credits.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     ClassesModule,
     ZoomCreditsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

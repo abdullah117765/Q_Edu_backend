@@ -2,10 +2,15 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const cookieParser = require('cookie-parser');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const helmet = require('helmet');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,7 +21,33 @@ async function bootstrap() {
   const isProduction = environment === 'production';
 
   app.setGlobalPrefix('api');
-  app.enableCors();
+  const allowedOrigins = configService.get<string[]>('cors.allowedOrigins') ?? [];
+  const corsOptions: CorsOptions = {
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} is not allowed by CORS policy`), false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    exposedHeaders: ['Content-Disposition'],
+  };
+  app.enableCors(corsOptions);
+  app.use(cookieParser());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
