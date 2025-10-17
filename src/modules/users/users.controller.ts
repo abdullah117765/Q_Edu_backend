@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -10,6 +10,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Request } from 'express';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
@@ -24,6 +25,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { Role } from './entities/role.enum';
 import { UserEntity } from './entities/user.entity';
+import { UserStatus } from './entities/user-status.enum';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
@@ -65,18 +67,26 @@ export class UsersController {
   }
 
   @Get('teachers')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'List teachers with pagination and filters' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findTeachers(@Query() query: TeachersQueryDto) {
+  findTeachers(@Query() query: TeachersQueryDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    if (currentUser?.role === Role.STUDENT) {
+      query.status = UserStatus.APPROVED;
+    }
     return this.usersService.findTeachers(query);
   }
 
   @Get('students')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'List students with pagination and filters' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findStudents(@Query() query: StudentsQueryDto) {
+  findStudents(@Query() query: StudentsQueryDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    if (currentUser?.role === Role.TEACHER && !query.status) {
+      query.status = UserStatus.APPROVED;
+    }
     return this.usersService.findStudents(query);
   }
 
@@ -89,12 +99,19 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'Retrieve a single user' })
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiOkResponse({ type: UserEntity })
   @ApiNotFoundResponse({ description: 'User with the specified id was not found.' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    const elevatedRoles: Role[] = [Role.SUPER_ADMIN, Role.ACADEMY_OWNER];
+
+    if (currentUser && !elevatedRoles.includes(currentUser.role) && currentUser.id !== id) {
+      throw new ForbiddenException('You can only view your own profile.');
+    }
+
     return this.usersService.findOne(id);
   }
 
