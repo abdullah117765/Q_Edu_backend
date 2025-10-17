@@ -42,7 +42,7 @@ export class ClassesController {
   }
 
   @Get()
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'List classes with pagination and filters' })
   @ApiOkResponse({ type: PaginatedClassesResponseDto })
   findAll(@Query() query: ListClassesQueryDto): Promise<PaginatedClassesResponseDto> {
@@ -50,7 +50,7 @@ export class ClassesController {
   }
 
   @Get(':id')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'Retrieve a class by id' })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: ClassEntity })
