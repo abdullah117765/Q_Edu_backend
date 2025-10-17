@@ -39,4 +39,7 @@ export class UserEntity {
 
   @ApiProperty({ example: '2025-01-02T12:00:00.000Z' })
   updatedAt!: Date;
+
+  @ApiPropertyOptional({ type: Object })
+  _count?: Record<string, number> | null;
 }

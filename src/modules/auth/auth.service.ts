@@ -332,6 +332,7 @@ export class AuthService {
       updatedAt: user.updatedAt,
     });
   }
+  
 
   private async createRefreshToken(userId: string): Promise<string> {
     await this.prisma.refreshToken.deleteMany({ where: { userId, expiresAt: { lt: new Date() } } });

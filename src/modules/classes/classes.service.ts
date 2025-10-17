@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Class, ClassParticipant, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateZoomCreditTransactionDto, ZoomCreditOperation } from '../zoom-credits/dto/create-zoom-credit-transaction.dto';
@@ -98,17 +98,8 @@ export class ClassesService {
   }
 
   async findAll(query: ListClassesQueryDto): Promise<PaginatedClassesResponseDto> {
-    const where: Prisma.ClassWhereInput = {
-      ...(query.status ? { status: query.status } : {}),
+    const baseWhere: Prisma.ClassWhereInput = {
       ...(query.teacherId ? { teacherId: query.teacherId } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { title: { contains: query.search } },
-              { description: { contains: query.search } },
-            ],
-          }
-        : {}),
       ...(query.from || query.to
         ? {
             scheduledStart: {
@@ -119,8 +110,21 @@ export class ClassesService {
         : {}),
     };
 
+    const search = query.search?.trim();
+    if (search) {
+      baseWhere.OR = [
+        { title: { contains: search } },
+        { description: { contains: search } },
+      ];
+    }
+
+    const where: Prisma.ClassWhereInput = {
+      ...baseWhere,
+      ...(query.status ? { status: query.status } : {}),
+    };
+
     const skip = (query.page - 1) * query.limit;
-    const [total, classes] = await this.prisma.$transaction([
+    const [total, classes, statusGroups] = await this.prisma.$transaction([
       this.prisma.class.count({ where }),
       this.prisma.class.findMany({
         where,
@@ -132,9 +136,32 @@ export class ClassesService {
           _count: { select: { participants: true } },
         },
       }),
+      this.prisma.class.groupBy({
+        by: ['status'],
+        where: baseWhere,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
     ]);
 
     const totalPages = Math.max(Math.ceil((total || 1) / query.limit), 1);
+
+    const statusCountMap = statusGroups.reduce<Record<ClassStatus, number>>(
+      (acc, group) => {
+        const countValue =
+          typeof group._count === 'object' && group._count !== null && '_all' in group._count
+            ? ((group._count as { _all?: number })._all ?? 0)
+            : 0;
+        acc[group.status] = countValue;
+        return acc;
+      },
+      {
+        [ClassStatus.UPCOMING]: 0,
+        [ClassStatus.ONGOING]: 0,
+        [ClassStatus.ENDED]: 0,
+        [ClassStatus.CANCELLED]: 0,
+      },
+    );
 
     return {
       data: classes.map((cls) => this.toClassEntity(cls)),
@@ -146,6 +173,7 @@ export class ClassesService {
         nextPage: query.page < totalPages ? query.page + 1 : null,
         previousPage: query.page > 1 ? query.page - 1 : null,
       },
+      summary: this.buildClassSummary(statusCountMap),
     };
   }
 
@@ -346,6 +374,15 @@ export class ClassesService {
     return participants.length;
   }
 
+  private buildClassSummary(counts: Record<ClassStatus, number>): { upcoming: number; ongoing: number; ended: number; cancelled: number } {
+    return {
+      upcoming: counts[ClassStatus.UPCOMING] ?? 0,
+      ongoing: counts[ClassStatus.ONGOING] ?? 0,
+      ended: counts[ClassStatus.ENDED] ?? 0,
+      cancelled: counts[ClassStatus.CANCELLED] ?? 0,
+    };
+  }
+
   private toClassEntity(record: Class & { teacher: { id: string; firstName: string; lastName: string | null; email: string } | null; participants?: ClassParticipant[]; _count: { participants: number } }): ClassEntity {
     return new ClassEntity({
       ...record,
@@ -424,5 +461,7 @@ export class ClassesService {
     }
   }
 }
+
+
 
 

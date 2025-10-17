@@ -1,5 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Role as PrismaRole, User } from '@prisma/client';
+﻿import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma, Role as PrismaRole, User, UserStatus as PrismaUserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
@@ -21,8 +21,19 @@ const PASSWORD_SALT_ROUNDS = 12;
 
 type RoleQueryDto = AdminsQueryDto | TeachersQueryDto | StudentsQueryDto;
 
+type UsersSummary = {
+  approved: number;
+  pending: number;
+  rejected: number;
+  inactive: number;
+};
+
+type UsersPaginatedResponse = PaginatedResponse<UserEntity> & { summary: UsersSummary };
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
@@ -68,21 +79,29 @@ export class UsersService {
     return this.create({ ...(dto as CreateUserDto), role: Role.STUDENT });
   }
 
-  async findAll(pagination: PaginationQueryDto): Promise<PaginatedResponse<UserEntity>> {
+  async findAll(pagination: PaginationQueryDto): Promise<UsersPaginatedResponse> {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
 
-    const [total, users] = await this.prisma.$transaction([
+    const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
       this.prisma.user.count(),
       this.prisma.user.findMany({
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
+      this.prisma.user.groupBy({
+        by: ['status'],
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
+      this.prisma.user.count({ where: { isActive: false } }),
     ]);
 
     const data = users.map((user) => this.toEntity(user));
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+    const statusCountMap = this.extractStatusCounts(statusGroups);
 
     return {
       data,
@@ -94,18 +113,19 @@ export class UsersService {
         currentPage: page,
         totalPages,
       },
+      summary: this.buildSummary(statusCountMap, inactiveCount),
     };
   }
 
-  async findAdmins(query: AdminsQueryDto): Promise<PaginatedResponse<UserEntity>> {
+  async findAdmins(query: AdminsQueryDto): Promise<UsersPaginatedResponse> {
     return this.findByRole(Role.ACADEMY_OWNER, query);
   }
 
-  async findTeachers(query: TeachersQueryDto): Promise<PaginatedResponse<UserEntity>> {
+  async findTeachers(query: TeachersQueryDto): Promise<UsersPaginatedResponse> {
     return this.findByRole(Role.TEACHER, query);
   }
 
-  async findStudents(query: StudentsQueryDto): Promise<PaginatedResponse<UserEntity>> {
+  async findStudents(query: StudentsQueryDto): Promise<UsersPaginatedResponse> {
     return this.findByRole(Role.STUDENT, query);
   }
 
@@ -173,6 +193,8 @@ export class UsersService {
       data: updateData,
     });
 
+    this.logger.log(`User ${id} status changed to ${dto.status}`);
+
     return this.toEntity(user);
   }
 
@@ -185,34 +207,55 @@ export class UsersService {
     await this.prisma.user.delete({ where: { id } });
   }
 
-  private async findByRole(role: Role, query: RoleQueryDto): Promise<PaginatedResponse<UserEntity>> {
-    const where: Prisma.UserWhereInput = {
+  private async findByRole(role: Role, query: RoleQueryDto): Promise<UsersPaginatedResponse> {
+    const baseWhere: Prisma.UserWhereInput = {
       role,
+    };
+
+    const where: Prisma.UserWhereInput = {
+      ...baseWhere,
       ...(query.status ? { status: query.status } : {}),
     };
 
     const search = query.search?.trim();
     if (search) {
       where.OR = [
-        { firstName: { contains: search,  } },
-        { lastName: { contains: search,  } },
-        { email: { contains: search,  } },
+        { firstName: { contains: search } },
+        { lastName: { contains: search } },
+        { email: { contains: search } },
       ];
     }
 
     const skip = (query.page - 1) * query.limit;
-    const [total, users] = await this.prisma.$transaction([
+    const include =
+      role === Role.TEACHER
+        ? { _count: { select: { teachingClasses: true } } }
+        : role === Role.STUDENT
+        ? { _count: { select: { classParticipants: true } } }
+        : undefined;
+
+    const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: query.limit,
+        ...(include ? { include } : {}),
       }),
+      this.prisma.user.groupBy({
+        by: ['status'],
+        where: baseWhere,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
+      this.prisma.user.count({ where: { ...baseWhere, isActive: false } }),
     ]);
 
     const data = users.map((user) => this.toEntity(user));
     const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
+
+    const statusCountMap = this.extractStatusCounts(statusGroups);
 
     return {
       data,
@@ -224,6 +267,36 @@ export class UsersService {
         currentPage: query.page,
         totalPages,
       },
+      summary: this.buildSummary(statusCountMap, inactiveCount),
+    };
+  }
+
+  private extractStatusCounts(
+    groups: Array<{ status: PrismaUserStatus; _count: true | { _all?: number } | null | undefined }>,
+  ): Record<PrismaUserStatus, number> {
+    return groups.reduce<Record<PrismaUserStatus, number>>(
+      (acc, group) => {
+        const countValue =
+          typeof group._count === 'object' && group._count !== null && '_all' in group._count
+            ? ((group._count as { _all?: number })._all ?? 0)
+            : 0;
+        acc[group.status] = countValue;
+        return acc;
+      },
+      {
+        [PrismaUserStatus.APPROVED]: 0,
+        [PrismaUserStatus.PENDING]: 0,
+        [PrismaUserStatus.REJECTED]: 0,
+      },
+    );
+  }
+
+  private buildSummary(statusCounts: Record<PrismaUserStatus, number>, inactiveCount: number): UsersSummary {
+    return {
+      approved: statusCounts[PrismaUserStatus.APPROVED] ?? 0,
+      pending: statusCounts[PrismaUserStatus.PENDING] ?? 0,
+      rejected: statusCounts[PrismaUserStatus.REJECTED] ?? 0,
+      inactive: inactiveCount,
     };
   }
 
@@ -236,4 +309,6 @@ export class UsersService {
     return new UserEntity(rest);
   }
 }
+
+
 

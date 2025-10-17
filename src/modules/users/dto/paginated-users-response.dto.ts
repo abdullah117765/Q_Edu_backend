@@ -21,10 +21,27 @@ class PaginationMetaDto {
   totalPages!: number;
 }
 
+class UsersSummaryDto {
+  @ApiProperty({ description: 'Number of approved users' })
+  approved!: number;
+
+  @ApiProperty({ description: 'Number of pending users' })
+  pending!: number;
+
+  @ApiProperty({ description: 'Number of rejected users' })
+  rejected!: number;
+
+  @ApiProperty({ description: 'Number of disabled users' })
+  inactive!: number;
+}
+
 export class PaginatedUsersResponseDto {
   @ApiProperty({ type: () => [UserEntity] })
   data!: UserEntity[];
 
   @ApiProperty({ type: () => PaginationMetaDto })
   meta!: PaginationMetaDto;
+
+  @ApiProperty({ type: () => UsersSummaryDto })
+  summary!: UsersSummaryDto;
 }
