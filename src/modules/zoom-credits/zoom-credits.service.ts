@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, ZoomCreditAuditAction, ZoomCreditTransaction, ZoomCreditTransactionType } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateZoomCreditTransactionDto, ZoomCreditOperation } from './dto/create-zoom-credit-transaction.dto';
 import { TransferZoomCreditsDto } from './dto/transfer-zoom-credits.dto';
@@ -7,12 +8,18 @@ import { PaginatedZoomCreditTransactionsResponseDto } from './dto/paginated-zoom
 import { ZoomCreditTransactionsQueryDto } from './dto/zoom-credit-transactions-query.dto';
 import { ZoomCreditSummaryEntity } from './entities/zoom-credit-summary.entity';
 import { ZoomCreditTransactionEntity } from './entities/zoom-credit-transaction.entity';
+import { PurchaseZoomCreditsDto } from './dto/purchase-zoom-credits.dto';
+import { PurchaseZoomCreditsResponseDto } from './dto/purchase-zoom-credits-response.dto';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class ZoomCreditsService {
   private readonly logger = new Logger(ZoomCreditsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   async adjustCredits(dto: CreateZoomCreditTransactionDto, actorId?: string): Promise<ZoomCreditTransactionEntity> {
     const type = dto.operation === ZoomCreditOperation.CREDIT ? ZoomCreditTransactionType.CREDIT : ZoomCreditTransactionType.DEBIT;
@@ -145,6 +152,48 @@ export class ZoomCreditsService {
     return {
       outbound: this.mapTransactionEntity(outbound),
       inbound: this.mapTransactionEntity(inbound),
+    };
+  }
+
+  async purchaseCredits(userId: string, dto: PurchaseZoomCreditsDto): Promise<PurchaseZoomCreditsResponseDto> {
+    if (!userId) {
+      throw new BadRequestException('Unable to resolve purchaser account.');
+    }
+
+    const amount = Math.trunc(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Amount must be a positive whole number.');
+    }
+
+    const planId = dto.planId?.trim() || undefined;
+    const currency = dto.currency?.trim().toUpperCase() || 'USD';
+    const paymentReference =
+      dto.paymentReference?.trim() || `PUR-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+    const transaction = await this.adjustCredits(
+      {
+        userId,
+        operation: ZoomCreditOperation.CREDIT,
+        amount,
+        reason: planId ? `Purchased credits (${planId})` : 'Purchased credits',
+        metadata: {
+          source: 'purchase',
+          planId: planId ?? null,
+          currency,
+          paymentReference,
+          paymentStatus: 'COMPLETED',
+        },
+      },
+      userId,
+    );
+
+    const summary = await this.getSummary(userId);
+
+    await this.paymentsService.recordInternalPurchase(userId, amount, 'internal', paymentReference);
+
+    return {
+      summary,
+      transaction,
     };
   }
 

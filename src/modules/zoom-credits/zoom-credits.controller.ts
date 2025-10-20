@@ -10,6 +10,8 @@ import { ZoomCreditTransactionsQueryDto } from './dto/zoom-credit-transactions-q
 import { ZoomCreditSummaryEntity } from './entities/zoom-credit-summary.entity';
 import { ZoomCreditTransactionEntity } from './entities/zoom-credit-transaction.entity';
 import { ZoomCreditsService } from './zoom-credits.service';
+import { PurchaseZoomCreditsDto } from './dto/purchase-zoom-credits.dto';
+import { PurchaseZoomCreditsResponseDto } from './dto/purchase-zoom-credits-response.dto';
 type RequestWithUser = Request & { user?: { id?: string } };
 
 @ApiTags('zoom-credits')
@@ -38,6 +40,17 @@ export class ZoomCreditsController {
   ): Promise<{ outbound: ZoomCreditTransactionEntity; inbound: ZoomCreditTransactionEntity }> {
     const actorId = (request as RequestWithUser).user?.id;
     return this.zoomCreditsService.transferCredits(dto, actorId);
+  }
+
+  @Post('purchase')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @ApiOperation({ summary: 'Purchase credits for the authenticated academy owner (mocked payment flow)' })
+  async purchase(
+    @Req() request: Request,
+    @Body() dto: PurchaseZoomCreditsDto,
+  ): Promise<PurchaseZoomCreditsResponseDto> {
+    const userId = (request as RequestWithUser).user?.id;
+    return this.zoomCreditsService.purchaseCredits(userId as string, dto);
   }
 
   @Get(':userId/summary')
