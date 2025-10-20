@@ -11,6 +11,9 @@ import { UsersModule } from './modules/users/users.module';
 import { ZoomCreditsModule } from './modules/zoom-credits/zoom-credits.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ResourcesModule } from './modules/resources/resources.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     ClassesModule,
     ZoomCreditsModule,
     DashboardModule,
+    ResourcesModule,
+    PaymentsModule,
+    PlatformSettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

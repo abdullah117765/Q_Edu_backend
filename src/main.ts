@@ -21,7 +21,10 @@ async function bootstrap() {
   const isProduction = environment === 'production';
 
   app.setGlobalPrefix('api');
-  const allowedOrigins = configService.get<string[]>('cors.allowedOrigins') ?? [];
+  const configuredOrigins = configService.get<string[]>('cors.allowedOrigins') ?? [];
+  const defaultDevOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'];
+  const allowedOrigins = configuredOrigins.length > 0 ? configuredOrigins : defaultDevOrigins;
+  const allowAllOrigins = allowedOrigins.includes('*');
   const corsOptions: CorsOptions = {
     origin: (origin, callback) => {
       if (!origin) {
@@ -29,7 +32,7 @@ async function bootstrap() {
         return;
       }
 
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (allowAllOrigins || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`Origin ${origin} is not allowed by CORS policy`), false);

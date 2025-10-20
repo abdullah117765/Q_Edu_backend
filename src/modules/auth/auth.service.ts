@@ -173,10 +173,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid OTP.');
     }
 
+    const shouldAutoApprove =
+      user.role === Role.SUPER_ADMIN || user.role === Role.ACADEMY_OWNER;
+
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
-        data: { isActive: true },
+        data: {
+          isActive: true,
+          ...(shouldAutoApprove
+            ? { status: UserStatus.APPROVED, rejectionReason: null }
+            : {}),
+        },
       }),
       this.prisma.emailVerificationToken.update({
         where: { userId: user.id },
@@ -185,7 +193,11 @@ export class AuthService {
       this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
     ]);
 
-    return { message: 'Account verified successfully. You can now sign in.' };
+    const message = shouldAutoApprove
+      ? 'Account verified successfully. You can now sign in.'
+      : 'Email verified successfully. An administrator will review and approve your account shortly.';
+
+    return { message };
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {

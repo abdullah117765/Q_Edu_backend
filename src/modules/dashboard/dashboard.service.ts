@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { ClassStatus, Role as PrismaRole, UserStatus, ZoomCreditTransactionType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
@@ -209,7 +209,7 @@ export class DashboardService {
       id: `class:${cls.id}`,
       timestamp: cls.createdAt,
       type: 'class_scheduled',
-      message: `Scheduled “${cls.title}” for ${cls.scheduledStart.toISOString()}.`,
+      message: `Scheduled "${cls.title}" for ${cls.scheduledStart.toISOString()}.`,
     }));
 
     const userActivities = approvedUsers.map((user) => ({
@@ -229,7 +229,7 @@ export class DashboardService {
         id: `credit:${tx.id}`,
         timestamp: tx.createdAt,
         type: 'credit_transaction',
-        message: `${action} ${tx.amount} credits – ${summary}.`,
+        message: `${action} ${tx.amount} credits - ${summary}.`,
       };
     });
 
@@ -238,3 +238,6 @@ export class DashboardService {
       .slice(0, 10);
   }
 }
+
+
+
