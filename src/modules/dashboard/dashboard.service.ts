@@ -1,5 +1,10 @@
 ﻿import { Injectable } from '@nestjs/common';
-import { ClassStatus, Role as PrismaRole, UserStatus, ZoomCreditTransactionType } from '@prisma/client';
+import {
+  ClassStatus,
+  Role as PrismaRole,
+  UserStatus,
+  ZoomCreditTransactionType,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
 import { ZoomCreditTransactionsQueryDto } from '../zoom-credits/dto/zoom-credit-transactions-query.dto';
@@ -37,10 +42,18 @@ export class DashboardService {
       zoomSummary,
       zoomTransactions,
     ] = await Promise.all([
-      this.prisma.user.count({ where: { role: PrismaRole.TEACHER, status: UserStatus.APPROVED } }),
-      this.prisma.user.count({ where: { role: PrismaRole.TEACHER, status: UserStatus.PENDING } }),
-      this.prisma.user.count({ where: { role: PrismaRole.STUDENT, status: UserStatus.APPROVED } }),
-      this.prisma.user.count({ where: { role: PrismaRole.STUDENT, status: UserStatus.PENDING } }),
+      this.prisma.user.count({
+        where: { role: PrismaRole.TEACHER, status: UserStatus.APPROVED },
+      }),
+      this.prisma.user.count({
+        where: { role: PrismaRole.TEACHER, status: UserStatus.PENDING },
+      }),
+      this.prisma.user.count({
+        where: { role: PrismaRole.STUDENT, status: UserStatus.APPROVED },
+      }),
+      this.prisma.user.count({
+        where: { role: PrismaRole.STUDENT, status: UserStatus.PENDING },
+      }),
       this.prisma.class.count({
         where: {
           status: ClassStatus.UPCOMING,
@@ -97,7 +110,10 @@ export class DashboardService {
       this.zoomCreditsService.getSummary(user.id),
       this.zoomCreditsService.getTransactions(
         user.id,
-        Object.assign(new ZoomCreditTransactionsQueryDto(), { page: 1, limit: 5 }),
+        Object.assign(new ZoomCreditTransactionsQueryDto(), {
+          page: 1,
+          limit: 5,
+        }),
       ),
     ]);
 
@@ -111,7 +127,11 @@ export class DashboardService {
             firstName: record.teacher.firstName,
             lastName: record.teacher.lastName,
             email: record.teacher.email,
-            name: this.buildDisplayName(record.teacher.firstName, record.teacher.lastName, record.teacher.email),
+            name: this.buildDisplayName(
+              record.teacher.firstName,
+              record.teacher.lastName,
+              record.teacher.email,
+            ),
           }
         : null,
       scheduledStart: record.scheduledStart,
@@ -124,7 +144,9 @@ export class DashboardService {
 
     const recentTransactions = zoomTransactions.data.map((tx) => {
       const metadataTitle =
-        tx.metadata && typeof tx.metadata['classTitle'] === 'string' ? (tx.metadata['classTitle'] as string) : undefined;
+        tx.metadata && typeof tx.metadata['classTitle'] === 'string'
+          ? (tx.metadata['classTitle'] as string)
+          : undefined;
       return {
         id: tx.id,
         timestamp: tx.createdAt,
@@ -137,20 +159,28 @@ export class DashboardService {
     const subscriptionUsage = {
       students: approvedStudents,
       teachers: approvedTeachers,
-      storageGb: Math.min(DEFAULT_STORAGE_LIMIT_GB, Math.round(approvedStudents * 0.5)),
+      storageGb: Math.min(
+        DEFAULT_STORAGE_LIMIT_GB,
+        Math.round(approvedStudents * 0.5),
+      ),
     };
 
     const recentActivity = this.composeRecentActivity(
       recentClasses,
       recentApprovedUsers,
       zoomTransactions.data,
+      user.role as PrismaRole,
     );
 
     return {
       academy: {
         id: user.id,
         name: this.deriveAcademyName(user),
-        ownerName: this.buildDisplayName(user.firstName, user.lastName, user.email),
+        ownerName: this.buildDisplayName(
+          user.firstName,
+          user.lastName,
+          user.email,
+        ),
         ownerEmail: user.email,
         createdAt: user.createdAt,
         updatedAt: now,
@@ -190,20 +220,44 @@ export class DashboardService {
     };
   }
 
-  private buildDisplayName(firstName?: string | null, lastName?: string | null, fallbackEmail?: string): string {
-    const name = [firstName ?? '', lastName ?? ''].map((part) => part.trim()).filter(Boolean).join(' ');
+  private buildDisplayName(
+    firstName?: string | null,
+    lastName?: string | null,
+    fallbackEmail?: string,
+  ): string {
+    const name = [firstName ?? '', lastName ?? '']
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' ');
     return name || fallbackEmail || 'Unnamed';
   }
 
   private deriveAcademyName(user: UserEntity): string {
-    const ownerName = this.buildDisplayName(user.firstName, user.lastName, user.email);
+    const ownerName = this.buildDisplayName(
+      user.firstName,
+      user.lastName,
+      user.email,
+    );
     return ownerName ? `${ownerName}'s Academy` : 'Your Academy';
   }
 
   private composeRecentActivity(
-    classes: Array<{ id: string; title: string; scheduledStart: Date; createdAt: Date }>,
-    approvedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; email: string; role: PrismaRole; updatedAt: Date }>,
+    classes: Array<{
+      id: string;
+      title: string;
+      scheduledStart: Date;
+      createdAt: Date;
+    }>,
+    approvedUsers: Array<{
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string;
+      role: PrismaRole;
+      updatedAt: Date;
+    }>,
     transactions: ZoomCreditTransactionEntity[],
+    currentUserRole: PrismaRole,
   ) {
     const classActivities = classes.map((cls) => ({
       id: `class:${cls.id}`,
@@ -212,7 +266,12 @@ export class DashboardService {
       message: `Scheduled "${cls.title}" for ${cls.scheduledStart.toISOString()}.`,
     }));
 
-    const userActivities = approvedUsers.map((user) => ({
+    const filteredApprovedUsers =
+      currentUserRole === PrismaRole.SUPER_ADMIN
+        ? approvedUsers
+        : approvedUsers.filter((user) => user.role !== PrismaRole.SUPER_ADMIN);
+
+    const userActivities = filteredApprovedUsers.map((user) => ({
       id: `user:${user.id}:${user.updatedAt.getTime()}`,
       timestamp: user.updatedAt,
       type: 'user_approved',
@@ -220,9 +279,13 @@ export class DashboardService {
     }));
 
     const transactionActivities = transactions.map((tx) => {
-      const isCredit = tx.type === ZoomCreditTransactionType.CREDIT || tx.type === ZoomCreditTransactionType.TRANSFER_IN;
+      const isCredit =
+        tx.type === ZoomCreditTransactionType.CREDIT ||
+        tx.type === ZoomCreditTransactionType.TRANSFER_IN;
       const metadataTitle =
-        tx.metadata && typeof tx.metadata['classTitle'] === 'string' ? (tx.metadata['classTitle'] as string) : undefined;
+        tx.metadata && typeof tx.metadata['classTitle'] === 'string'
+          ? (tx.metadata['classTitle'] as string)
+          : undefined;
       const action = isCredit ? 'Credited' : 'Debited';
       const summary = tx.reason ?? metadataTitle ?? 'Zoom credit activity';
       return {
@@ -233,11 +296,24 @@ export class DashboardService {
       };
     });
 
-    return [...classActivities, ...userActivities, ...transactionActivities]
+    const combined = [
+      ...classActivities,
+      ...userActivities,
+      ...transactionActivities,
+    ];
+    const sanitised =
+      currentUserRole === PrismaRole.SUPER_ADMIN
+        ? combined
+        : combined.filter(
+            (entry) =>
+              !(
+                entry.type === 'user_approved' &&
+                entry.message.includes('SUPER_ADMIN')
+              ),
+          );
+
+    return sanitised
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, 10);
   }
 }
-
-
-

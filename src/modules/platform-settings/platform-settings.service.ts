@@ -5,8 +5,6 @@ import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
 import { PlatformSettingsEntity } from './entities/platform-settings.entity';
 
 type PlatformSettingsMap = {
-  allowTeacherSelfRegistration: boolean;
-  autoApproveStudents: boolean;
   sessionTimeoutMinutes: number;
   zoomCreditLowThreshold: number;
   maxConcurrentClasses: number;
@@ -23,8 +21,6 @@ type PlatformSettingRecord = PlatformSetting & {
 };
 
 const DEFAULT_SETTINGS: PlatformSettingsMap = {
-  allowTeacherSelfRegistration: false,
-  autoApproveStudents: false,
   sessionTimeoutMinutes: 60,
   zoomCreditLowThreshold: 100,
   maxConcurrentClasses: 12,
@@ -47,24 +43,31 @@ export class PlatformSettingsService {
     dto: UpdatePlatformSettingsDto,
     updatedById: string | null,
   ): Promise<PlatformSettingsEntity> {
-    const updates = Object.entries(dto).filter(([, value]) => value !== undefined) as Array<
-      [keyof PlatformSettingsMap, PlatformSettingsMap[keyof PlatformSettingsMap]]
+    const updates = Object.entries(dto).filter(
+      ([, value]) => value !== undefined,
+    ) as Array<
+      [
+        keyof PlatformSettingsMap,
+        PlatformSettingsMap[keyof PlatformSettingsMap],
+      ]
     >;
 
     if (updates.length === 0) {
       throw new BadRequestException('No settings provided to update.');
     }
 
-    const validKeys = new Set<keyof PlatformSettingsMap>(Object.keys(DEFAULT_SETTINGS) as Array<
-      keyof PlatformSettingsMap
-    >);
+    const validKeys = new Set<keyof PlatformSettingsMap>(
+      Object.keys(DEFAULT_SETTINGS) as Array<keyof PlatformSettingsMap>,
+    );
 
     await this.ensureDefaults();
 
     await this.prisma.$transaction(
       updates.map(([key, value]) => {
         if (!validKeys.has(key)) {
-          throw new BadRequestException(`Unsupported platform setting "${key}".`);
+          throw new BadRequestException(
+            `Unsupported platform setting "${key}".`,
+          );
         }
 
         return this.prisma.platformSetting.update({
@@ -78,7 +81,9 @@ export class PlatformSettingsService {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
-    this.logger.log(`Platform settings updated by ${updatedById ?? 'system'}: ${updates.map(([key]) => key).join(', ')}`);
+    this.logger.log(
+      `Platform settings updated by ${updatedById ?? 'system'}: ${updates.map(([key]) => key).join(', ')}`,
+    );
 
     const records = await this.fetchSettingsRecords();
     return this.toEntity(records);
@@ -104,10 +109,14 @@ export class PlatformSettingsService {
   }
 
   private async ensureDefaults(): Promise<void> {
-    const existing = await this.prisma.platformSetting.findMany({ select: { key: true } });
+    const existing = await this.prisma.platformSetting.findMany({
+      select: { key: true },
+    });
     const existingKeys = new Set(existing.map((record) => record.key));
 
-    const missingEntries = Object.entries(DEFAULT_SETTINGS).filter(([key]) => !existingKeys.has(key));
+    const missingEntries = Object.entries(DEFAULT_SETTINGS).filter(
+      ([key]) => !existingKeys.has(key),
+    );
     if (missingEntries.length === 0) {
       return;
     }
@@ -127,9 +136,15 @@ export class PlatformSettingsService {
     let latestUpdatedById: string | null = null;
     let latestUpdatedByName: string | null = null;
 
-    const buildDisplayName = (firstName?: string, lastName?: string | null, email?: string) => {
-      const parts = [firstName?.trim(), lastName?.trim()].filter(Boolean) as string[];
-      return parts.length > 0 ? parts.join(' ') : email ?? null;
+    const buildDisplayName = (
+      firstName?: string,
+      lastName?: string | null,
+      email?: string,
+    ) => {
+      const parts = [firstName?.trim(), lastName?.trim()].filter(
+        Boolean,
+      ) as string[];
+      return parts.length > 0 ? parts.join(' ') : (email ?? null);
     };
 
     for (const record of records) {
@@ -142,7 +157,11 @@ export class PlatformSettingsService {
         latestUpdatedAt = record.updatedAt;
         latestUpdatedById = record.updatedById ?? null;
         latestUpdatedByName = record.updatedBy
-          ? buildDisplayName(record.updatedBy.firstName, record.updatedBy.lastName, record.updatedBy.email)
+          ? buildDisplayName(
+              record.updatedBy.firstName,
+              record.updatedBy.lastName,
+              record.updatedBy.email,
+            )
           : null;
       }
     }
@@ -155,8 +174,14 @@ export class PlatformSettingsService {
     });
   }
 
-  private toJsonValue(value: PlatformSettingsMap[keyof PlatformSettingsMap]): Prisma.InputJsonValue {
-    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') {
+  private toJsonValue(
+    value: PlatformSettingsMap[keyof PlatformSettingsMap],
+  ): Prisma.InputJsonValue {
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'string'
+    ) {
       return value;
     }
     return value as Prisma.InputJsonValue;
@@ -173,7 +198,9 @@ export class PlatformSettingsService {
       }
       if (typeof value === 'string') {
         const parsed = Number(value);
-        return (Number.isFinite(parsed) ? parsed : defaultValue) as PlatformSettingsMap[K];
+        return (
+          Number.isFinite(parsed) ? parsed : defaultValue
+        ) as PlatformSettingsMap[K];
       }
       return defaultValue;
     }

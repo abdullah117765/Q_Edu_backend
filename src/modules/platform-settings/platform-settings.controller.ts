@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { UserEntity } from '../users/entities/user.entity';
@@ -14,7 +19,9 @@ type RequestWithUser = Request & { user?: UserEntity };
 @ApiBearerAuth()
 @Controller('platform-settings')
 export class PlatformSettingsController {
-  constructor(private readonly platformSettingsService: PlatformSettingsService) {}
+  constructor(
+    private readonly platformSettingsService: PlatformSettingsService,
+  ) {}
 
   @Get()
   @Auth(Role.SUPER_ADMIN)

@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -21,7 +31,7 @@ import { PaginatedClassesResponseDto } from './dto/paginated-classes-response.dt
 import { UpdateClassDto } from './dto/update-class.dto';
 import { ClassEntity } from './entities/class.entity';
 import { ClassesService } from './classes.service';
-type RequestWithUser = Request & { user?: { id?: string } };
+type RequestWithUser = Request & { user?: { id?: string; role?: Role } };
 
 @ApiTags('classes')
 @ApiBearerAuth()
@@ -37,15 +47,18 @@ export class ClassesController {
     @Body() dto: CreateClassDto,
     @Req() request: Request,
   ): Promise<ClassEntity> {
-    const actorId = (request as RequestWithUser).user?.id;
-    return this.classesService.create(dto, actorId);
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.create(dto, actorId, actorRole);
   }
 
   @Get()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'List classes with pagination and filters' })
   @ApiOkResponse({ type: PaginatedClassesResponseDto })
-  findAll(@Query() query: ListClassesQueryDto): Promise<PaginatedClassesResponseDto> {
+  findAll(
+    @Query() query: ListClassesQueryDto,
+  ): Promise<PaginatedClassesResponseDto> {
     return this.classesService.findAll(query);
   }
 
@@ -60,7 +73,7 @@ export class ClassesController {
   }
 
   @Patch(':id')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Update class details and sync changes to Zoom' })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: ClassEntity })
@@ -69,26 +82,36 @@ export class ClassesController {
     @Body() dto: UpdateClassDto,
     @Req() request: Request,
   ): Promise<ClassEntity> {
-    const actorId = (request as RequestWithUser).user?.id;
-    return this.classesService.update(id, dto, actorId);
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.update(id, dto, actorId, actorRole);
   }
 
   @Delete(':id')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Delete a class and associated Zoom meeting' })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: MessageResponseDto })
-  async remove(@Param('id') id: string): Promise<MessageResponseDto> {
-    await this.classesService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<MessageResponseDto> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    await this.classesService.remove(id, actorId, actorRole);
     return { message: 'Class deleted successfully.' };
   }
 
   @Get(':id/participants')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
-  @ApiOperation({ summary: 'Retrieve stored participants for a class (raw SQL optimized)' })
+  @ApiOperation({
+    summary: 'Retrieve stored participants for a class (raw SQL optimized)',
+  })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: PaginatedClassParticipantsResponseDto })
-  @ApiBadRequestResponse({ description: 'Invalid pagination or filter supplied' })
+  @ApiBadRequestResponse({
+    description: 'Invalid pagination or filter supplied',
+  })
   getParticipants(
     @Param('id') id: string,
     @Query() query: ClassParticipantsQueryDto,
@@ -98,7 +121,9 @@ export class ClassesController {
 
   @Post(':id/sync-participants')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
-  @ApiOperation({ summary: 'Fetch participants from Zoom and replace local records' })
+  @ApiOperation({
+    summary: 'Fetch participants from Zoom and replace local records',
+  })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   async syncParticipants(@Param('id') id: string): Promise<MessageResponseDto> {
     const count = await this.classesService.syncParticipantsFromZoom(id);
