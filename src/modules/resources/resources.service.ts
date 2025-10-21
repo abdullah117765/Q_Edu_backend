@@ -6,6 +6,8 @@ import { CreateResourceDto } from './dto/create-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourcesQueryDto } from './dto/resources-query.dto';
 import { PaginatedResourcesResponseDto } from './dto/paginated-resources-response.dto';
+import { UserEntity } from '../users/entities/user.entity';
+import { Role } from '../users/entities/role.enum';
 
 type ResourceWithRelations = {
   id: string;
@@ -61,30 +63,41 @@ export class ResourcesService {
     return this.toEntity(resource);
   }
 
-  async findAll(query: ResourcesQueryDto, uploaderId?: string): Promise<PaginatedResourcesResponseDto> {
-    const where: Prisma.ResourceWhereInput = {
-      ...(query.type ? { fileType: query.type } : {}),
-      ...(query.classId ? { classId: query.classId } : {}),
-      ...(query.uploaderId ? { uploaderId: query.uploaderId } : {}),
-      ...(query.visibility ? { visibility: query.visibility } : {}),
-    };
+  async findAll(query: ResourcesQueryDto, currentUser?: UserEntity): Promise<PaginatedResourcesResponseDto> {
+    const conditions: Prisma.ResourceWhereInput[] = [];
+
+    if (query.type) {
+      conditions.push({ fileType: query.type });
+    }
+
+    if (query.classId) {
+      conditions.push({ classId: query.classId });
+    }
+
+    if (query.uploaderId) {
+      conditions.push({ uploaderId: query.uploaderId });
+    }
+
+    if (query.visibility) {
+      conditions.push({ visibility: query.visibility });
+    }
 
     const search = query.search?.trim();
     if (search) {
-      where.OR = [
-        { title: { contains: search } },
-        { description: { contains: search } },
-      ];
+      conditions.push({
+        OR: [
+          { title: { contains: search } },
+          { description: { contains: search } },
+        ],
+      });
     }
 
-    if (!query.visibility && !query.uploaderId && uploaderId) {
-      where.OR = [
-        ...(where.OR ?? []),
-        { uploaderId },
-        { visibility: ResourceVisibility.ACADEMY },
-        { visibility: ResourceVisibility.PUBLIC },
-      ];
+    const accessFilter = this.buildAccessFilter(currentUser);
+    if (accessFilter) {
+      conditions.push(accessFilter);
     }
+
+    const where: Prisma.ResourceWhereInput = conditions.length > 0 ? { AND: conditions } : {};
 
     const skip = (query.page - 1) * query.limit;
     const [total, resources] = await this.prisma.$transaction([
@@ -116,9 +129,14 @@ export class ResourcesService {
     };
   }
 
-  async findOne(id: string): Promise<ResourceEntity> {
-    const resource = await this.prisma.resource.findUnique({
-      where: { id },
+  async findOne(id: string, currentUser?: UserEntity): Promise<ResourceEntity> {
+    const accessFilter = this.buildAccessFilter(currentUser);
+    const where: Prisma.ResourceWhereInput = accessFilter
+      ? { AND: [{ id }, accessFilter] }
+      : { id };
+
+    const resource = await this.prisma.resource.findFirst({
+      where,
       include: {
         uploader: { select: { firstName: true, lastName: true, email: true } },
         class: { select: { id: true, title: true } },
@@ -163,6 +181,49 @@ export class ResourcesService {
     }
 
     await this.prisma.resource.delete({ where: { id } });
+  }
+
+  private buildAccessFilter(user?: UserEntity): Prisma.ResourceWhereInput | undefined {
+    if (!user?.role) {
+      return undefined;
+    }
+
+    switch (user.role) {
+      case Role.SUPER_ADMIN:
+        return undefined;
+      case Role.ACADEMY_OWNER:
+        return {
+          OR: [
+            { uploaderId: user.id },
+            { visibility: { in: [ResourceVisibility.ACADEMY, ResourceVisibility.PUBLIC] } },
+          ],
+        };
+      case Role.TEACHER:
+        return {
+          OR: [
+            { uploaderId: user.id },
+            { class: { teacherId: user.id } },
+            { visibility: ResourceVisibility.ACADEMY },
+            { visibility: ResourceVisibility.PUBLIC },
+          ],
+        };
+      case Role.STUDENT:
+        return {
+          OR: [
+            { visibility: ResourceVisibility.ACADEMY },
+            { visibility: ResourceVisibility.PUBLIC },
+            {
+              class: {
+                participants: {
+                  some: { userId: user.id },
+                },
+              },
+            },
+          ],
+        };
+      default:
+        return { uploaderId: user.id };
+    }
   }
 
   private toEntity(resource: ResourceWithRelations): ResourceEntity {

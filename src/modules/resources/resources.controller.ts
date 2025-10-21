@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { Role } from '../users/entities/role.enum';
+import { UserEntity } from '../users/entities/user.entity';
 import { CreateResourceDto } from './dto/create-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourcesQueryDto } from './dto/resources-query.dto';
@@ -10,7 +11,7 @@ import { PaginatedResourcesResponseDto } from './dto/paginated-resources-respons
 import { ResourceEntity } from './entities/resource.entity';
 import { ResourcesService } from './resources.service';
 
-type RequestWithUser = Request & { user?: { id?: string } };
+type RequestWithUser = Request & { user?: UserEntity };
 
 @ApiTags('resources')
 @ApiBearerAuth()
@@ -26,26 +27,30 @@ export class ResourcesController {
     @Req() request: Request,
     @Body() dto: CreateResourceDto,
   ): Promise<ResourceEntity> {
-    const uploaderId = (request as RequestWithUser).user?.id;
-    return this.resourcesService.create(uploaderId as string, dto);
+    const currentUser = (request as RequestWithUser).user;
+    if (!currentUser?.id) {
+      throw new UnauthorizedException('Authenticated user is required to upload resources.');
+    }
+    return this.resourcesService.create(currentUser.id, dto);
   }
 
   @Get()
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'List resources with optional filters' })
   @ApiOkResponse({ type: PaginatedResourcesResponseDto })
   findAll(@Req() request: Request, @Query() query: ResourcesQueryDto): Promise<PaginatedResourcesResponseDto> {
-    const uploaderId = (request as RequestWithUser).user?.id;
-    return this.resourcesService.findAll(query, uploaderId);
+    const currentUser = (request as RequestWithUser).user;
+    return this.resourcesService.findAll(query, currentUser);
   }
 
   @Get(':id')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'Fetch a single resource metadata record' })
   @ApiParam({ name: 'id', description: 'Resource identifier' })
   @ApiOkResponse({ type: ResourceEntity })
-  findOne(@Param('id') id: string): Promise<ResourceEntity> {
-    return this.resourcesService.findOne(id);
+  findOne(@Req() request: Request, @Param('id') id: string): Promise<ResourceEntity> {
+    const currentUser = (request as RequestWithUser).user;
+    return this.resourcesService.findOne(id, currentUser);
   }
 
   @Patch(':id')
