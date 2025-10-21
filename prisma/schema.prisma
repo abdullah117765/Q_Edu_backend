@@ -78,6 +78,7 @@ model User {
   resources                          Resource[]
   payments                           Payment[]
   updatedPlatformSettings            PlatformSetting[]       @relation("PlatformSettingsUpdatedBy")
+  academySettings                    AcademySetting[]
 
   @@index([role])
   @@index([status])
@@ -239,6 +240,7 @@ model Resource {
   @@index([classId])
   @@index([visibility])
 }
+
 model Payment {
   id        String   @id @default(cuid())
   userId    String
@@ -258,13 +260,25 @@ model Payment {
 }
 
 model PlatformSetting {
-  key         String @id
+  key         String   @id
   value       Json
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   updatedById String?
-  updatedBy   User?   @relation("PlatformSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?    @relation("PlatformSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([updatedAt])
 }
 
+model AcademySetting {
+  id        String   @id @default(cuid())
+  ownerId   String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, key])
+  @@index([ownerId])
+}

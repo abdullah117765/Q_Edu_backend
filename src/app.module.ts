@@ -14,6 +14,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
+import { AcademySettingsModule } from './modules/academy-settings/academy-settings.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { PlatformSettingsModule } from './modules/platform-settings/platform-set
     ResourcesModule,
     PaymentsModule,
     PlatformSettingsModule,
+    AcademySettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
