@@ -28,4 +28,9 @@ export class ResourcesQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(ResourceVisibility)
   visibility?: ResourceVisibility;
+
+  @ApiPropertyOptional({ description: 'Filter by academy identifier' })
+  @IsOptional()
+  @IsString()
+  academyId?: string;
 }

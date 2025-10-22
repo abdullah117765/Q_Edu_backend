@@ -15,6 +15,7 @@ import { ResourcesModule } from './modules/resources/resources.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 import { AcademySettingsModule } from './modules/academy-settings/academy-settings.module';
+import { AcademiesModule } from './modules/academies/academies.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AcademySettingsModule } from './modules/academy-settings/academy-settin
     PaymentsModule,
     PlatformSettingsModule,
     AcademySettingsModule,
+    AcademiesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

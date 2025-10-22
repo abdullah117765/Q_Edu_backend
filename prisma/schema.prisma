@@ -33,6 +33,18 @@ enum ClassParticipantRole {
   GUEST
 }
 
+enum AcademyMemberRole {
+  TEACHER
+  STUDENT
+}
+
+enum AcademyMembershipStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
 enum ZoomCreditTransactionType {
   CREDIT
   DEBIT
@@ -79,6 +91,9 @@ model User {
   payments                           Payment[]
   updatedPlatformSettings            PlatformSetting[]       @relation("PlatformSettingsUpdatedBy")
   academySettings                    AcademySetting[]
+  ownedAcademy                       Academy?                @relation("AcademyOwner")
+  academyMemberships                 AcademyMembership[]
+  membershipActions                  AcademyMembership[]     @relation("AcademyMembershipActionedBy")
 
   @@index([role])
   @@index([status])
@@ -122,10 +137,48 @@ model EmailVerificationToken {
   @@index([expiresAt])
 }
 
+model Academy {
+  id          String              @id @default(cuid())
+  name        String
+  slug        String              @unique
+  description String?
+  ownerId     String              @unique
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  owner       User                @relation("AcademyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships AcademyMembership[]
+  classes     Class[]
+  resources   Resource[]
+
+  @@index([name])
+  @@index([ownerId])
+}
+
+model AcademyMembership {
+  id           String                  @id @default(cuid())
+  academyId    String
+  userId       String
+  role         AcademyMemberRole
+  status       AcademyMembershipStatus @default(PENDING)
+  requestedAt  DateTime                @default(now())
+  respondedAt  DateTime?
+  reason       String?
+  actionedById String?
+  academy      Academy                 @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionedBy   User?                   @relation("AcademyMembershipActionedBy", fields: [actionedById], references: [id], onDelete: SetNull)
+
+  @@unique([academyId, userId])
+  @@index([userId, status])
+  @@index([academyId, status])
+  @@index([status])
+}
+
 model Class {
   id                     String                  @id @default(cuid())
   title                  String
   description            String?
+  academyId              String
   teacherId              String
   teacher                User                    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   status                 ClassStatus             @default(UPCOMING)
@@ -146,8 +199,10 @@ model Class {
   participants           ClassParticipant[]
   zoomCreditTransactions ZoomCreditTransaction[]
   resources              Resource[]
+  academy                Academy                 @relation(fields: [academyId], references: [id], onDelete: Cascade)
 
   @@index([teacherId])
+  @@index([academyId])
   @@index([scheduledStart])
   @@index([status, scheduledStart])
   @@index([zoomMeetingId])
@@ -229,15 +284,18 @@ model Resource {
   fileType    String?
   uploaderId  String
   classId     String?
+  academyId   String?
   visibility  ResourceVisibility @default(ACADEMY)
   metadata    Json?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   uploader    User               @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
   class       Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  academy     Academy?           @relation(fields: [academyId], references: [id], onDelete: SetNull)
 
   @@index([uploaderId])
   @@index([classId])
+  @@index([academyId])
   @@index([visibility])
 }
 

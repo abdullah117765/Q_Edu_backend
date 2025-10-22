@@ -39,6 +39,9 @@ export class ResourceEntity {
   @ApiPropertyOptional()
   classTitle?: string | null;
 
+  @ApiPropertyOptional()
+  academyId?: string | null;
+
   @ApiProperty()
   uploaderId!: string;
 

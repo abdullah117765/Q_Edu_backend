@@ -10,6 +10,8 @@ type PlatformSettingsMap = {
   maxConcurrentClasses: number;
   dailyDigestEmail: boolean;
   supportEmail: string;
+  maxAcademiesPerTeacher: number;
+  maxAcademiesPerStudent: number;
 };
 
 type PlatformSettingRecord = PlatformSetting & {
@@ -26,6 +28,8 @@ const DEFAULT_SETTINGS: PlatformSettingsMap = {
   maxConcurrentClasses: 12,
   dailyDigestEmail: true,
   supportEmail: 'support@qedu.io',
+  maxAcademiesPerTeacher: 3,
+  maxAcademiesPerStudent: 2,
 };
 
 @Injectable()

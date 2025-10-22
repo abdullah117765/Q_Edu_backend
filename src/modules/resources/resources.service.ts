@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ResourceVisibility } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AcademyMembershipStatus, Prisma, ResourceVisibility } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResourceEntity } from './entities/resource.entity';
 import { CreateResourceDto } from './dto/create-resource.dto';
@@ -19,6 +19,7 @@ type ResourceWithRelations = {
   fileType: string | null;
   fileSize: number | null;
   classId: string | null;
+  academyId: string | null;
   visibility: ResourceVisibility;
   metadata: Prisma.JsonValue | null;
   uploaderId: string;
@@ -40,6 +41,36 @@ export class ResourcesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(uploaderId: string, dto: CreateResourceDto): Promise<ResourceEntity> {
+    const uploader = await this.prisma.user.findUnique({
+      where: { id: uploaderId },
+      select: { id: true, role: true },
+    });
+    if (!uploader) {
+      throw new NotFoundException('Uploader not found.');
+    }
+
+    if (!dto.academyId) {
+      throw new BadRequestException('academyId is required to create a resource.');
+    }
+
+    const scope = await this.resolveAccessibleAcademyIdsForRole(uploader.id, uploader.role as Role);
+    if (!scope.unlimited && !scope.academyIds.includes(dto.academyId)) {
+      throw new ForbiddenException('You do not have access to the selected academy.');
+    }
+
+    if (dto.classId) {
+      const cls = await this.prisma.class.findUnique({
+        where: { id: dto.classId },
+        select: { academyId: true },
+      });
+      if (!cls) {
+        throw new NotFoundException('Associated class not found.');
+      }
+      if (cls.academyId !== dto.academyId) {
+        throw new BadRequestException('Class is not part of the specified academy.');
+      }
+    }
+
     const resource = await this.prisma.resource.create({
       data: {
         title: dto.title,
@@ -53,6 +84,7 @@ export class ResourcesService {
         visibility: dto.visibility ?? ResourceVisibility.ACADEMY,
         metadata: this.toInputJson(dto.metadata),
         uploaderId,
+        academyId: dto.academyId,
       },
       include: {
         uploader: { select: { firstName: true, lastName: true, email: true } },
@@ -65,6 +97,9 @@ export class ResourcesService {
 
   async findAll(query: ResourcesQueryDto, currentUser?: UserEntity): Promise<PaginatedResourcesResponseDto> {
     const conditions: Prisma.ResourceWhereInput[] = [];
+    const scope = currentUser
+      ? await this.resolveAccessibleAcademyIdsForRole(currentUser.id, currentUser.role)
+      : { unlimited: false, academyIds: [] };
 
     if (query.type) {
       conditions.push({ fileType: query.type });
@@ -80,6 +115,15 @@ export class ResourcesService {
 
     if (query.visibility) {
       conditions.push({ visibility: query.visibility });
+    }
+
+    if (query.academyId) {
+      if (!scope.unlimited && !scope.academyIds.includes(query.academyId)) {
+        throw new ForbiddenException('You do not have access to the requested academy.');
+      }
+      conditions.push({ academyId: query.academyId });
+    } else if (!scope.unlimited) {
+      conditions.push({ academyId: { in: scope.academyIds } });
     }
 
     const search = query.search?.trim();
@@ -130,13 +174,23 @@ export class ResourcesService {
   }
 
   async findOne(id: string, currentUser?: UserEntity): Promise<ResourceEntity> {
+    const scope = currentUser
+      ? await this.resolveAccessibleAcademyIdsForRole(currentUser.id, currentUser.role)
+      : { unlimited: false, academyIds: [] };
+
+    const conditions: Prisma.ResourceWhereInput[] = [{ id }];
+
+    if (!scope.unlimited) {
+      conditions.push({ academyId: { in: scope.academyIds } });
+    }
+
     const accessFilter = this.buildAccessFilter(currentUser);
-    const where: Prisma.ResourceWhereInput = accessFilter
-      ? { AND: [{ id }, accessFilter] }
-      : { id };
+    if (accessFilter) {
+      conditions.push(accessFilter);
+    }
 
     const resource = await this.prisma.resource.findFirst({
-      where,
+      where: { AND: conditions },
       include: {
         uploader: { select: { firstName: true, lastName: true, email: true } },
         class: { select: { id: true, title: true } },
@@ -150,7 +204,53 @@ export class ResourcesService {
     return this.toEntity(resource);
   }
 
-  async update(id: string, dto: UpdateResourceDto): Promise<ResourceEntity> {
+  async update(id: string, dto: UpdateResourceDto, currentUser: UserEntity): Promise<ResourceEntity> {
+    const existing = await this.prisma.resource.findUnique({
+      where: { id },
+      include: {
+        uploader: { select: { firstName: true, lastName: true, email: true } },
+        class: { select: { id: true, title: true, academyId: true } },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Resource not found.');
+    }
+
+    const scope = await this.resolveAccessibleAcademyIdsForRole(currentUser.id, currentUser.role);
+    if (
+      !scope.unlimited &&
+      existing.academyId &&
+      !scope.academyIds.includes(existing.academyId)
+    ) {
+      throw new ForbiddenException('You do not have permission to update this resource.');
+    }
+
+    if (
+      currentUser.role !== Role.SUPER_ADMIN &&
+      currentUser.role !== Role.ACADEMY_OWNER &&
+      existing.uploaderId !== currentUser.id
+    ) {
+      throw new ForbiddenException('You can only modify resources you uploaded.');
+    }
+
+    if (dto.academyId && dto.academyId !== existing.academyId) {
+      throw new BadRequestException('Resource academy cannot be changed.');
+    }
+
+    if (dto.classId) {
+      const cls = await this.prisma.class.findUnique({
+        where: { id: dto.classId },
+        select: { academyId: true },
+      });
+      if (!cls) {
+        throw new NotFoundException('Associated class not found.');
+      }
+      if (existing.academyId && cls.academyId !== existing.academyId) {
+        throw new BadRequestException('Class is not part of the resource academy.');
+      }
+    }
+
     const resource = await this.prisma.resource.update({
       where: { id },
       data: {
@@ -174,13 +274,67 @@ export class ResourcesService {
     return this.toEntity(resource);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, currentUser: UserEntity): Promise<void> {
     const existing = await this.prisma.resource.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Resource not found.');
     }
 
+    const scope = await this.resolveAccessibleAcademyIdsForRole(currentUser.id, currentUser.role);
+    if (
+      !scope.unlimited &&
+      existing.academyId &&
+      !scope.academyIds.includes(existing.academyId)
+    ) {
+      throw new ForbiddenException('You do not have permission to delete this resource.');
+    }
+
+    if (
+      currentUser.role !== Role.SUPER_ADMIN &&
+      currentUser.role !== Role.ACADEMY_OWNER &&
+      existing.uploaderId !== currentUser.id
+    ) {
+      throw new ForbiddenException('You can only delete resources you uploaded.');
+    }
+
     await this.prisma.resource.delete({ where: { id } });
+  }
+
+  private async resolveAccessibleAcademyIdsForRole(
+    userId: string,
+    role?: Role,
+  ): Promise<{ unlimited: boolean; academyIds: string[] }> {
+    if (!role) {
+      return { unlimited: false, academyIds: [] };
+    }
+
+    if (role === Role.SUPER_ADMIN) {
+      return { unlimited: true, academyIds: [] };
+    }
+
+    if (role === Role.ACADEMY_OWNER) {
+      const academy = await this.prisma.academy.findUnique({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      return {
+        unlimited: false,
+        academyIds: academy ? [academy.id] : [],
+      };
+    }
+
+    const memberships = await this.prisma.academyMembership.findMany({
+      where: {
+        userId,
+        status: AcademyMembershipStatus.APPROVED,
+      },
+      select: { academyId: true },
+    });
+
+    return {
+      unlimited: false,
+      academyIds: memberships.map((membership) => membership.academyId),
+    };
   }
 
   private buildAccessFilter(user?: UserEntity): Prisma.ResourceWhereInput | undefined {
@@ -239,6 +393,7 @@ export class ResourcesService {
       visibility: resource.visibility,
       classId: resource.classId,
       classTitle: resource.class?.title ?? null,
+      academyId: resource.academyId,
       uploaderId: resource.uploaderId,
       uploaderName:
         [resource.uploader.firstName, resource.uploader.lastName].filter(Boolean).join(' ') ||

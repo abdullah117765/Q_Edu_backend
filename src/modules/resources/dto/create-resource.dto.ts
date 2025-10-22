@@ -47,6 +47,11 @@ export class CreateResourceDto {
   @MaxLength(64)
   classId?: string;
 
+  @ApiProperty({ description: 'Identifier of the academy that owns this resource' })
+  @IsString()
+  @MaxLength(64)
+  academyId!: string;
+
   @ApiPropertyOptional({ enum: ResourceVisibility, default: ResourceVisibility.ACADEMY })
   @IsOptional()
   @IsEnum(ResourceVisibility)

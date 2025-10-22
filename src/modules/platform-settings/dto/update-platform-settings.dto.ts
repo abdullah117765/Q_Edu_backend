@@ -53,4 +53,26 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsEmail()
   supportEmail?: string;
+
+  @ApiPropertyOptional({
+    description: 'Maximum number of academies a teacher can join (0 for unlimited)',
+    minimum: 0,
+    maximum: 50,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  maxAcademiesPerTeacher?: number;
+
+  @ApiPropertyOptional({
+    description: 'Maximum number of academies a student can join (0 for unlimited)',
+    minimum: 0,
+    maximum: 50,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  maxAcademiesPerStudent?: number;
 }

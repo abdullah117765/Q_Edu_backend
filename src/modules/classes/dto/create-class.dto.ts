@@ -89,6 +89,11 @@ export class CreateClassDto {
   @IsString()
   description?: string;
 
+  @ApiProperty({ description: 'Identifier of the academy this class belongs to' })
+  @IsString()
+  @IsNotEmpty()
+  academyId!: string;
+
   @ApiProperty({ description: 'Identifier of the teacher hosting the class' })
   @IsString()
   @IsNotEmpty()

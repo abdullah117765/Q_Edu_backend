@@ -14,6 +14,11 @@ export class ListClassesQueryDto extends PaginationQueryDto {
   @IsString()
   teacherId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by academy identifier' })
+  @IsOptional()
+  @IsString()
+  academyId?: string;
+
   @ApiPropertyOptional({ description: 'Search term applied to title and description' })
   @IsOptional()
   @IsString()

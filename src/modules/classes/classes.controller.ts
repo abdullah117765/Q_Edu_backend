@@ -58,8 +58,11 @@ export class ClassesController {
   @ApiOkResponse({ type: PaginatedClassesResponseDto })
   findAll(
     @Query() query: ListClassesQueryDto,
+    @Req() request: Request,
   ): Promise<PaginatedClassesResponseDto> {
-    return this.classesService.findAll(query);
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.findAll(query, actorId, actorRole);
   }
 
   @Get(':id')
@@ -68,8 +71,10 @@ export class ClassesController {
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: ClassEntity })
   @ApiNotFoundResponse({ description: 'Class not found' })
-  findOne(@Param('id') id: string): Promise<ClassEntity> {
-    return this.classesService.findOne(id);
+  findOne(@Param('id') id: string, @Req() request: Request): Promise<ClassEntity> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.findOne(id, actorId, actorRole);
   }
 
   @Patch(':id')
@@ -115,8 +120,11 @@ export class ClassesController {
   getParticipants(
     @Param('id') id: string,
     @Query() query: ClassParticipantsQueryDto,
+    @Req() request: Request,
   ): Promise<PaginatedClassParticipantsResponseDto> {
-    return this.classesService.getParticipants(id, query);
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.getParticipants(id, query, actorId, actorRole);
   }
 
   @Post(':id/sync-participants')
@@ -125,8 +133,13 @@ export class ClassesController {
     summary: 'Fetch participants from Zoom and replace local records',
   })
   @ApiParam({ name: 'id', description: 'Class identifier' })
-  async syncParticipants(@Param('id') id: string): Promise<MessageResponseDto> {
-    const count = await this.classesService.syncParticipantsFromZoom(id);
+  async syncParticipants(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<MessageResponseDto> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    const count = await this.classesService.syncParticipantsFromZoom(id, actorId, actorRole);
     return { message: `Synced ${count} participants from Zoom.` };
   }
 }

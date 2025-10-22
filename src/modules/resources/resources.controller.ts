@@ -59,8 +59,16 @@ export class ResourcesController {
   @ApiParam({ name: 'id', description: 'Resource identifier' })
   @ApiBody({ type: UpdateResourceDto })
   @ApiOkResponse({ type: ResourceEntity })
-  update(@Param('id') id: string, @Body() dto: UpdateResourceDto): Promise<ResourceEntity> {
-    return this.resourcesService.update(id, dto);
+  update(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateResourceDto,
+  ): Promise<ResourceEntity> {
+    const currentUser = (request as RequestWithUser).user;
+    if (!currentUser?.id) {
+      throw new UnauthorizedException('Authenticated user is required to update resources.');
+    }
+    return this.resourcesService.update(id, dto, currentUser);
   }
 
   @Delete(':id')
@@ -68,8 +76,12 @@ export class ResourcesController {
   @ApiOperation({ summary: 'Delete a resource metadata entry' })
   @ApiParam({ name: 'id', description: 'Resource identifier' })
   @ApiOkResponse({ description: 'Resource removed' })
-  async remove(@Param('id') id: string): Promise<{ message: string }> {
-    await this.resourcesService.remove(id);
+  async remove(@Req() request: Request, @Param('id') id: string): Promise<{ message: string }> {
+    const currentUser = (request as RequestWithUser).user;
+    if (!currentUser?.id) {
+      throw new UnauthorizedException('Authenticated user is required to delete resources.');
+      }
+    await this.resourcesService.remove(id, currentUser);
     return { message: 'Resource deleted successfully.' };
   }
 }

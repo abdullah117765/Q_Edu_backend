@@ -62,8 +62,9 @@ export class UsersController {
   @Auth(Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'List admins with pagination and filters' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findAdmins(@Query() query: AdminsQueryDto) {
-    return this.usersService.findAdmins(query);
+  findAdmins(@Query() query: AdminsQueryDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    return this.usersService.findAdmins(query, currentUser ? { id: currentUser.id, role: currentUser.role } : undefined);
   }
 
   @Get('teachers')
@@ -75,7 +76,10 @@ export class UsersController {
     if (currentUser?.role === Role.STUDENT) {
       query.status = UserStatus.APPROVED;
     }
-    return this.usersService.findTeachers(query);
+    return this.usersService.findTeachers(
+      query,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Get('students')
@@ -87,15 +91,19 @@ export class UsersController {
     if (currentUser?.role === Role.TEACHER && !query.status) {
       query.status = UserStatus.APPROVED;
     }
-    return this.usersService.findStudents(query);
+    return this.usersService.findStudents(
+      query,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Get()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'List users with pagination' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findAll(@Query() query: PaginationQueryDto) {
-    return this.usersService.findAll(query);
+  findAll(@Query() query: PaginationQueryDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    return this.usersService.findAll(query, currentUser ? { id: currentUser.id, role: currentUser.role } : undefined);
   }
 
   @Get(':id')
@@ -112,7 +120,10 @@ export class UsersController {
       throw new ForbiddenException('You can only view your own profile.');
     }
 
-    return this.usersService.findOne(id);
+    return this.usersService.findOne(
+      id,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Patch(':id')

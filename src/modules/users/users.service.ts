@@ -1,9 +1,10 @@
-﻿import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma, Role as PrismaRole, UserStatus as PrismaUserStatus, User } from '@prisma/client';
+﻿import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AcademyMembershipStatus, Prisma, Role as PrismaRole, UserStatus as PrismaUserStatus, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AcademiesService } from '../academies/academies.service';
 import { AdminsQueryDto } from './dto/admins-query.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -30,11 +31,19 @@ type UsersSummary = {
 
 type UsersPaginatedResponse = PaginatedResponse<UserEntity> & { summary: UsersSummary };
 
+type CurrentUserContext = {
+  id: string;
+  role: Role;
+};
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly academiesService: AcademiesService,
+  ) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
@@ -48,6 +57,10 @@ export class UsersService {
       if (superAdminCount > 0) {
         throw new ConflictException('A super admin already exists.');
       }
+    }
+
+    if (role === Role.ACADEMY_OWNER && !dto.academyName?.trim()) {
+      throw new BadRequestException('Academy name is required for academy owner accounts.');
     }
 
     const hashedPassword = await this.hashPassword(dto.password);
@@ -64,6 +77,20 @@ export class UsersService {
       },
     });
 
+    if (role === Role.ACADEMY_OWNER) {
+      try {
+        await this.academiesService.createForOwner({
+          ownerId: user.id,
+          name: dto.academyName!.trim(),
+          description: dto.academyDescription?.trim(),
+        });
+      } catch (error) {
+        this.logger.error(`Failed to create academy for owner ${user.id}: ${(error as Error).message}`);
+        await this.prisma.user.delete({ where: { id: user.id } });
+        throw error;
+      }
+    }
+
     return this.toEntity(user);
   }
 
@@ -79,23 +106,37 @@ export class UsersService {
     return this.create({ ...(dto as CreateUserDto), role: Role.STUDENT });
   }
 
-  async findAll(pagination: PaginationQueryDto): Promise<UsersPaginatedResponse> {
+  async findAll(
+    pagination: PaginationQueryDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UsersPaginatedResponse> {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
 
+    const { where, emptyResult } = await this.buildScopedWhere({}, currentUser);
+    if (emptyResult) {
+      return this.emptyPaginatedResponse(page);
+    }
+
     const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
       this.prisma.user.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
       this.prisma.user.groupBy({
         by: ['status'],
+        where,
         orderBy: { status: 'asc' },
         _count: { _all: true },
       }),
-      this.prisma.user.count({ where: { isActive: false } }),
+      this.prisma.user.count({
+        where: {
+          AND: [where, { isActive: false }],
+        },
+      }),
     ]);
 
     const data = users.map((user) => this.toEntity(user));
@@ -117,23 +158,66 @@ export class UsersService {
     };
   }
 
-  async findAdmins(query: AdminsQueryDto): Promise<UsersPaginatedResponse> {
-    return this.findByRole(Role.ACADEMY_OWNER, query);
+  async findAdmins(
+    query: AdminsQueryDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UsersPaginatedResponse> {
+    return this.findByRole(Role.ACADEMY_OWNER, query, currentUser);
   }
 
-  async findTeachers(query: TeachersQueryDto): Promise<UsersPaginatedResponse> {
-    return this.findByRole(Role.TEACHER, query);
+  async findTeachers(
+    query: TeachersQueryDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UsersPaginatedResponse> {
+    return this.findByRole(Role.TEACHER, query, currentUser);
   }
 
-  async findStudents(query: StudentsQueryDto): Promise<UsersPaginatedResponse> {
-    return this.findByRole(Role.STUDENT, query);
+  async findStudents(
+    query: StudentsQueryDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UsersPaginatedResponse> {
+    return this.findByRole(Role.STUDENT, query, currentUser);
   }
 
-  async findOne(id: string): Promise<UserEntity> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async findOne(id: string, currentUser?: CurrentUserContext): Promise<UserEntity> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        academyMemberships: {
+          select: {
+            academyId: true,
+            status: true,
+          },
+        },
+        ownedAcademy: {
+          select: { id: true },
+        },
+      },
+    });
     if (!user) {
       throw new NotFoundException('User with the specified id was not found.');
     }
+
+    if (currentUser && currentUser.id !== id && currentUser.role !== Role.SUPER_ADMIN) {
+      const scope = await this.academiesService.getAccessibleAcademyScope(
+        currentUser.id,
+        currentUser.role as unknown as PrismaRole,
+      );
+
+      if (!scope.unlimited) {
+        const approvedMembershipAcademyIds = (user.academyMemberships ?? [])
+          .filter((membership) => membership.status === AcademyMembershipStatus.APPROVED)
+          .map((membership) => membership.academyId);
+        const ownedAcademyIds = user.ownedAcademy ? [user.ownedAcademy.id] : [];
+        const accessibleAcademyIds = new Set([...approvedMembershipAcademyIds, ...ownedAcademyIds]);
+        const hasOverlap = scope.academyIds.some((academyId) => accessibleAcademyIds.has(academyId));
+
+        if (!hasOverlap) {
+          throw new ForbiddenException('You are not authorized to view this user.');
+        }
+      }
+    }
+
     return this.toEntity(user);
   }
 
@@ -207,23 +291,28 @@ export class UsersService {
     await this.prisma.user.delete({ where: { id } });
   }
 
-  private async findByRole(role: Role, query: RoleQueryDto): Promise<UsersPaginatedResponse> {
+  private async findByRole(
+    role: Role,
+    query: RoleQueryDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UsersPaginatedResponse> {
     const baseWhere: Prisma.UserWhereInput = {
       role,
-    };
-
-    const where: Prisma.UserWhereInput = {
-      ...baseWhere,
       ...(query.status ? { status: query.status } : {}),
     };
 
     const search = query.search?.trim();
     if (search) {
-      where.OR = [
+      baseWhere.OR = [
         { firstName: { contains: search } },
         { lastName: { contains: search } },
         { email: { contains: search } },
       ];
+    }
+
+    const { where, emptyResult } = await this.buildScopedWhere(baseWhere, currentUser);
+    if (emptyResult) {
+      return this.emptyPaginatedResponse(query.page);
     }
 
     const skip = (query.page - 1) * query.limit;
@@ -245,11 +334,15 @@ export class UsersService {
       }),
       this.prisma.user.groupBy({
         by: ['status'],
-        where: baseWhere,
+        where,
         orderBy: { status: 'asc' },
         _count: { _all: true },
       }),
-      this.prisma.user.count({ where: { ...baseWhere, isActive: false } }),
+      this.prisma.user.count({
+        where: {
+          AND: [where, { isActive: false }],
+        },
+      }),
     ]);
 
     const data = users.map((user) => this.toEntity(user));
@@ -268,6 +361,78 @@ export class UsersService {
         totalPages,
       },
       summary: this.buildSummary(statusCountMap, inactiveCount),
+    };
+  }
+
+  private async buildScopedWhere(
+    baseWhere: Prisma.UserWhereInput,
+    currentUser?: CurrentUserContext,
+  ): Promise<{ where: Prisma.UserWhereInput; emptyResult: boolean }> {
+    if (!currentUser || currentUser.role === Role.SUPER_ADMIN) {
+      return { where: baseWhere, emptyResult: false };
+    }
+
+    const scope = await this.academiesService.getAccessibleAcademyScope(
+      currentUser.id,
+      currentUser.role as unknown as PrismaRole,
+    );
+
+    if (scope.unlimited) {
+      return { where: baseWhere, emptyResult: false };
+    }
+
+    if (scope.academyIds.length === 0) {
+      return {
+        where: { AND: [baseWhere, { id: { in: [] } }] },
+        emptyResult: true,
+      };
+    }
+
+    const scopedCondition: Prisma.UserWhereInput = {
+      OR: [
+        {
+          academyMemberships: {
+            some: {
+              academyId: { in: scope.academyIds },
+              status: AcademyMembershipStatus.APPROVED,
+            },
+          },
+        },
+        {
+          ownedAcademy: {
+            id: { in: scope.academyIds },
+          },
+        },
+        { id: currentUser.id },
+      ],
+    };
+
+    return {
+      where: {
+        AND: [baseWhere, scopedCondition],
+      },
+      emptyResult: false,
+    };
+  }
+
+  private emptyPaginatedResponse(page: number): UsersPaginatedResponse {
+    const zeroCounts: Record<PrismaUserStatus, number> = {
+      [PrismaUserStatus.APPROVED]: 0,
+      [PrismaUserStatus.PENDING]: 0,
+      [PrismaUserStatus.REJECTED]: 0,
+    };
+
+    return {
+      data: [],
+      meta: {
+        total: 0,
+        count: 0,
+        currentPage: page,
+        totalPages: 0,
+        nextPage: null,
+        previousPage: page > 1 ? page - 1 : null,
+      },
+      summary: this.buildSummary(zeroCounts, 0),
     };
   }
 

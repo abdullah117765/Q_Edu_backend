@@ -6,10 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AcademyMemberRole,
+  AcademyMembershipStatus,
   Class,
   ClassParticipant,
   Prisma,
   Role as PrismaRole,
+  UserStatus as PrismaUserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -87,6 +90,44 @@ export class ClassesService {
       throw new NotFoundException('Teacher not found.');
     }
 
+    if (teacher.status !== PrismaUserStatus.APPROVED) {
+      throw new BadRequestException('Teacher must be approved before scheduling classes.');
+    }
+
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: dto.academyId },
+      select: { id: true, ownerId: true },
+    });
+    if (!academy) {
+      throw new NotFoundException('Academy not found.');
+    }
+
+    await this.ensureAcademyAccess(academy.id, actorId, actorRole);
+
+    if (
+      teacher.role !== PrismaRole.TEACHER &&
+      !(teacherId === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
+    ) {
+      throw new BadRequestException('Selected user must be a teacher or the academy owner.');
+    }
+
+    if (teacherId !== academy.ownerId) {
+      const membership = await this.prisma.academyMembership.findUnique({
+        where: {
+          academyId_userId: { academyId: academy.id, userId: teacherId },
+        },
+        select: { status: true, role: true },
+      });
+
+      if (
+        !membership ||
+        membership.status !== AcademyMembershipStatus.APPROVED ||
+        membership.role !== AcademyMemberRole.TEACHER
+      ) {
+        throw new BadRequestException('Teacher must be an approved member of the selected academy.');
+      }
+    }
+
     const durationMinutes = Math.max(
       Math.round((end.getTime() - start.getTime()) / 60000),
       1,
@@ -107,6 +148,7 @@ export class ClassesService {
         data: {
           title: dto.title,
           description: dto.description,
+          academyId: academy.id,
           teacherId,
           scheduledStart: start,
           scheduledEnd: end,
@@ -147,12 +189,22 @@ export class ClassesService {
     this.logger.log(
       `Created class ${classId} with Zoom meeting ${zoomMeeting.id}`,
     );
-    return this.findOne(classId);
+    return this.findOne(classId, actorId, actorRole);
   }
 
   async findAll(
     query: ListClassesQueryDto,
+    actorId?: string,
+    actorRole?: PrismaRole,
   ): Promise<PaginatedClassesResponseDto> {
+    const accessible = await this.resolveAccessibleAcademyIds(actorId, actorRole);
+
+    if (query.academyId && !accessible.unlimited) {
+      if (!accessible.academyIds.includes(query.academyId)) {
+        throw new ForbiddenException('You do not have access to the requested academy.');
+      }
+    }
+
     const baseWhere: Prisma.ClassWhereInput = {
       ...(query.teacherId ? { teacherId: query.teacherId } : {}),
       ...(query.from || query.to
@@ -163,6 +215,11 @@ export class ClassesService {
             },
           }
         : {}),
+      ...(query.academyId
+        ? { academyId: query.academyId }
+        : accessible.unlimited
+        ? {}
+        : { academyId: { in: accessible.academyIds } }),
     };
 
     const search = query.search?.trim();
@@ -234,7 +291,7 @@ export class ClassesService {
     };
   }
 
-  async findOne(id: string): Promise<ClassEntity> {
+  async findOne(id: string, actorId?: string, actorRole?: PrismaRole): Promise<ClassEntity> {
     const cls = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -248,6 +305,8 @@ export class ClassesService {
       throw new NotFoundException('Class not found.');
     }
 
+    await this.ensureAcademyAccess(cls.academyId, actorId, actorRole);
+
     return this.toClassEntity(cls);
   }
 
@@ -260,6 +319,20 @@ export class ClassesService {
     const existing = await this.prisma.class.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Class not found.');
+    }
+
+    await this.ensureAcademyAccess(existing.academyId, actorId, actorRole);
+
+    if (dto.academyId && dto.academyId !== existing.academyId) {
+      throw new BadRequestException('Academy cannot be changed for an existing class.');
+    }
+
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: existing.academyId },
+      select: { ownerId: true },
+    });
+    if (!academy) {
+      throw new NotFoundException('Academy not found for this class.');
     }
 
     if (actorRole === PrismaRole.TEACHER) {
@@ -279,6 +352,47 @@ export class ClassesService {
       actorRole === PrismaRole.TEACHER
         ? actorId
         : (dto.teacherId ?? existing.teacherId);
+
+    if (!effectiveTeacherId) {
+      throw new BadRequestException('Teacher identifier is required.');
+    }
+
+    if (
+      effectiveTeacherId !== existing.teacherId ||
+      actorRole === PrismaRole.ACADEMY_OWNER ||
+      actorRole === PrismaRole.SUPER_ADMIN
+    ) {
+      const teacher = await this.prisma.user.findUnique({
+        where: { id: effectiveTeacherId },
+      });
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found.');
+      }
+      if (teacher.status !== PrismaUserStatus.APPROVED) {
+        throw new BadRequestException('Teacher must be approved before leading classes.');
+      }
+      if (
+        teacher.role !== PrismaRole.TEACHER &&
+        !(teacher.id === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
+      ) {
+        throw new BadRequestException('Selected user must be a teacher or the academy owner.');
+      }
+      if (teacher.id !== academy.ownerId) {
+        const membership = await this.prisma.academyMembership.findUnique({
+          where: {
+            academyId_userId: { academyId: existing.academyId, userId: teacher.id },
+          },
+          select: { status: true, role: true },
+        });
+        if (
+          !membership ||
+          membership.status !== AcademyMembershipStatus.APPROVED ||
+          membership.role !== AcademyMemberRole.TEACHER
+        ) {
+          throw new BadRequestException('Teacher must be an approved member of this academy.');
+        }
+      }
+    }
 
     const start = dto.scheduledStart
       ? new Date(dto.scheduledStart)
@@ -372,7 +486,7 @@ export class ClassesService {
     }
 
     this.logger.log(`Updated class ${id}`);
-    return this.findOne(id);
+    return this.findOne(id, actorId, actorRole);
   }
 
   async remove(
@@ -384,6 +498,8 @@ export class ClassesService {
     if (!existing) {
       throw new NotFoundException('Class not found.');
     }
+
+    await this.ensureAcademyAccess(existing.academyId, actorId, actorRole);
 
     if (actorRole === PrismaRole.TEACHER) {
       if (!actorId || existing.teacherId !== actorId) {
@@ -408,11 +524,15 @@ export class ClassesService {
   async getParticipants(
     classId: string,
     query: ClassParticipantsQueryDto,
+    actorId?: string,
+    actorRole?: PrismaRole,
   ): Promise<PaginatedClassParticipantsResponseDto> {
     const cls = await this.prisma.class.findUnique({ where: { id: classId } });
     if (!cls) {
       throw new NotFoundException('Class not found.');
     }
+
+    await this.ensureAcademyAccess(cls.academyId, actorId, actorRole);
 
     const offset = (query.page - 1) * query.limit;
     const searchFilter = query.search
@@ -448,11 +568,17 @@ export class ClassesService {
     };
   }
 
-  async syncParticipantsFromZoom(classId: string): Promise<number> {
+  async syncParticipantsFromZoom(
+    classId: string,
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<number> {
     const cls = await this.prisma.class.findUnique({ where: { id: classId } });
     if (!cls) {
       throw new NotFoundException('Class not found.');
     }
+
+    await this.ensureAcademyAccess(cls.academyId, actorId, actorRole);
 
     if (!cls.zoomMeetingId) {
       throw new BadRequestException(
@@ -511,6 +637,58 @@ export class ClassesService {
       `Synced ${participants.length} participants from Zoom for class ${classId}`,
     );
     return participants.length;
+  }
+
+  private async resolveAccessibleAcademyIds(
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<{ unlimited: boolean; academyIds: string[] }> {
+    if (!actorId || !actorRole) {
+      return { unlimited: false, academyIds: [] };
+    }
+
+    if (actorRole === PrismaRole.SUPER_ADMIN) {
+      return { unlimited: true, academyIds: [] };
+    }
+
+    if (actorRole === PrismaRole.ACADEMY_OWNER) {
+      const academy = await this.prisma.academy.findUnique({
+        where: { ownerId: actorId },
+        select: { id: true },
+      });
+      return {
+        unlimited: false,
+        academyIds: academy ? [academy.id] : [],
+      };
+    }
+
+    const memberships = await this.prisma.academyMembership.findMany({
+      where: {
+        userId: actorId,
+        status: AcademyMembershipStatus.APPROVED,
+      },
+      select: { academyId: true },
+    });
+
+    return {
+      unlimited: false,
+      academyIds: memberships.map((membership) => membership.academyId),
+    };
+  }
+
+  private async ensureAcademyAccess(
+    academyId: string,
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<void> {
+    const access = await this.resolveAccessibleAcademyIds(actorId, actorRole);
+    if (access.unlimited) {
+      return;
+    }
+
+    if (!access.academyIds.includes(academyId)) {
+      throw new ForbiddenException('You do not have access to this academy.');
+    }
   }
 
   private buildClassSummary(counts: Record<ClassStatus, number>): {

@@ -36,6 +36,18 @@ export class PlatformSettingsEntity {
   supportEmail!: string;
 
   @ApiProperty({
+    description: 'Maximum number of academies a teacher can join',
+    example: 3,
+  })
+  maxAcademiesPerTeacher!: number;
+
+  @ApiProperty({
+    description: 'Maximum number of academies a student can join',
+    example: 2,
+  })
+  maxAcademiesPerStudent!: number;
+
+  @ApiProperty({
     description: 'Timestamp of the last settings update',
     example: '2025-01-01T12:00:00.000Z',
   })

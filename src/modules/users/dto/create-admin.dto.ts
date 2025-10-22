@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Length, Matches, MinLength } from 'class-validator';
 import { PHONE_REGEX } from './phone-regex.constant';
 
 export class CreateAdminDto {
@@ -29,4 +29,23 @@ export class CreateAdminDto {
   @IsString()
   @Matches(PHONE_REGEX, { message: 'phoneNumber must contain only digits, spaces, and valid symbols' })
   phoneNumber!: string;
+
+  @ApiProperty({
+    example: 'Bright Minds Academy',
+    description: 'Academy name to associate with the new owner account',
+    minLength: 3,
+    maxLength: 120,
+  })
+  @IsString()
+  @Length(3, 120)
+  academyName!: string;
+
+  @ApiPropertyOptional({
+    example: 'STEM-focused academy serving grades 6-12 learners worldwide.',
+    maxLength: 512,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, 512)
+  academyDescription?: string;
 }
