@@ -50,13 +50,27 @@ export default () => ({
     secure: (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true',
     from: process.env.SMTP_FROM ?? '',
   },
-  zoom: {
-    accountId: process.env.ZOOM_ACCOUNT_ID ?? '',
-    clientId: process.env.ZOOM_CLIENT_ID ?? '',
-    clientSecret: process.env.ZOOM_CLIENT_SECRET ?? '',
-    apiBaseUrl: process.env.ZOOM_API_BASE_URL ?? 'https://api.zoom.us/v2',
-    oauthUrl: process.env.ZOOM_OAUTH_URL ?? 'https://zoom.us/oauth/token',
-  },
+  zoom: (() => {
+    const accountId = process.env.ZOOM_ACCOUNT_ID?.trim() ?? '';
+    const clientId = process.env.ZOOM_CLIENT_ID?.trim() ?? '';
+    const clientSecret = process.env.ZOOM_CLIENT_SECRET?.trim() ?? '';
+    const explicitEnabled =
+      process.env.ZOOM_ENABLED?.toLowerCase() === 'true' ||
+      process.env.ZOOM_ENABLED?.toLowerCase() === 'false'
+        ? process.env.ZOOM_ENABLED?.toLowerCase() === 'true'
+        : null;
+    const inferredEnabled = Boolean(accountId && clientId && clientSecret);
+    const enabled = explicitEnabled ?? inferredEnabled;
+
+    return {
+      enabled,
+      accountId,
+      clientId,
+      clientSecret,
+      apiBaseUrl: process.env.ZOOM_API_BASE_URL ?? 'https://api.zoom.us/v2',
+      oauthUrl: process.env.ZOOM_OAUTH_URL ?? 'https://zoom.us/oauth/token',
+    };
+  })(),
   cors: {
     allowedOrigins: parseAllowedOrigins(
       process.env.CORS_ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGINS ?? '',

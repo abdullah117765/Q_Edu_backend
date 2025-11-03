@@ -28,14 +28,34 @@ export class ZoomService {
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly oauthUrl: string;
+  private readonly enabled: boolean;
   private tokenCache: CachedToken | null = null;
 
   constructor(private readonly configService: ConfigService) {
-    const baseUrl = configService.getOrThrow<string>('zoom.apiBaseUrl');
-    this.accountId = configService.getOrThrow<string>('zoom.accountId');
-    this.clientId = configService.getOrThrow<string>('zoom.clientId');
-    this.clientSecret = configService.getOrThrow<string>('zoom.clientSecret');
-    this.oauthUrl = configService.getOrThrow<string>('zoom.oauthUrl');
+    const baseUrl = configService.get<string>('zoom.apiBaseUrl') ?? 'https://api.zoom.us/v2';
+    this.accountId = (configService.get<string>('zoom.accountId') ?? '').trim();
+    this.clientId = (configService.get<string>('zoom.clientId') ?? '').trim();
+    this.clientSecret = (configService.get<string>('zoom.clientSecret') ?? '').trim();
+    const rawOauthUrl = (configService.get<string>('zoom.oauthUrl') ?? 'https://zoom.us/oauth/token').trim();
+    this.oauthUrl = this.normaliseOauthUrl(rawOauthUrl);
+    const explicitEnabled = configService.get<string>('zoom.enabled');
+    let enabled: boolean;
+    if (explicitEnabled !== undefined && explicitEnabled !== null) {
+      const flag = explicitEnabled.toString().toLowerCase();
+      enabled = flag === 'true';
+    } else {
+      enabled = Boolean(this.accountId && this.clientId && this.clientSecret);
+    }
+
+    if (!enabled) {
+      this.logger.warn('Zoom integration is disabled. Meetings will use local placeholders.');
+    } else if (!this.accountId || !this.clientId || !this.clientSecret) {
+      this.logger.error('Zoom integration is enabled but required credentials are missing.');
+      enabled = false;
+    } else if (this.oauthUrl !== rawOauthUrl) {
+      this.logger.warn(`Normalised Zoom OAuth URL to ${this.oauthUrl}. Original value "${rawOauthUrl}" did not match Zoom token endpoint.`);
+    }
+    this.enabled = enabled;
 
     this.http = axios.create({
       baseURL: baseUrl,
@@ -43,16 +63,54 @@ export class ZoomService {
     });
   }
 
+  private normaliseOauthUrl(url: string): string {
+    if (!url) {
+      return 'https://zoom.us/oauth/token';
+    }
+
+    try {
+      const parsed = new URL(url);
+      if (!parsed.pathname.endsWith('/token')) {
+        parsed.pathname = '/oauth/token';
+        parsed.search = '';
+        return parsed.toString();
+      }
+    } catch (error) {
+      this.logger.warn(`Invalid Zoom OAuth URL "${url}". Falling back to default token endpoint.`);
+      return 'https://zoom.us/oauth/token';
+    }
+
+    return url;
+  }
+
   async createMeeting(hostId: string, payload: CreateZoomMeetingPayload): Promise<ZoomMeetingResponse> {
+    if (!this.enabled) {
+      this.logger.debug(`Zoom disabled. Returning placeholder meeting for host ${hostId}.`);
+      return this.buildPlaceholderMeeting(hostId, payload);
+    }
+
     const userIdentifier = encodeURIComponent(hostId);
-    return this.executeRequest<ZoomMeetingResponse>({
-      method: 'POST',
-      url: `/users/${userIdentifier}/meetings`,
-      data: payload,
-    });
+    try {
+      return await this.executeRequest<ZoomMeetingResponse>({
+        method: 'POST',
+        url: `/users/${userIdentifier}/meetings`,
+        data: payload,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to create Zoom meeting for host ${hostId}. Falling back to placeholder. Reason: ${message}`,
+      );
+      return this.buildPlaceholderMeeting(hostId, payload);
+    }
   }
 
   async updateMeeting(meetingId: string, payload: UpdateZoomMeetingPayload): Promise<void> {
+    if (!this.enabled) {
+      this.logger.debug(`Zoom disabled. Skipping meeting update for ${meetingId}.`);
+      return;
+    }
+
     await this.executeRequest<void>({
       method: 'PATCH',
       url: `/meetings/${encodeURIComponent(meetingId)}`,
@@ -61,6 +119,11 @@ export class ZoomService {
   }
 
   async deleteMeeting(meetingId: string): Promise<void> {
+    if (!this.enabled) {
+      this.logger.debug(`Zoom disabled. Skipping meeting deletion for ${meetingId}.`);
+      return;
+    }
+
     await this.executeRequest<void>({
       method: 'DELETE',
       url: `/meetings/${encodeURIComponent(meetingId)}`,
@@ -68,6 +131,14 @@ export class ZoomService {
   }
 
   async getMeeting(meetingId: string): Promise<ZoomMeetingResponse> {
+    if (!this.enabled) {
+      this.logger.debug(`Zoom disabled. Returning placeholder meeting for id ${meetingId}.`);
+      return this.buildPlaceholderMeeting('placeholder', {
+        topic: 'Placeholder meeting',
+        start_time: new Date().toISOString(),
+      });
+    }
+
     return this.executeRequest<ZoomMeetingResponse>({
       method: 'GET',
       url: `/meetings/${encodeURIComponent(meetingId)}`,
@@ -78,6 +149,11 @@ export class ZoomService {
     meetingId: string,
     options?: { pageSize?: number; nextPageToken?: string },
   ): Promise<ZoomParticipantsResponse> {
+    if (!this.enabled) {
+      this.logger.debug(`Zoom disabled. Returning empty participants for meeting ${meetingId}.`);
+      return { participants: [], total_records: 0 };
+    }
+
     return this.executeRequest<ZoomParticipantsResponse>({
       method: 'GET',
       url: `/report/meetings/${encodeURIComponent(meetingId)}/participants`,
@@ -89,6 +165,10 @@ export class ZoomService {
   }
 
   private async executeRequest<T>(config: AxiosRequestConfig, retry = true): Promise<T> {
+    if (!this.enabled) {
+      throw new BadGatewayException('Zoom integration is disabled.');
+    }
+
     const accessToken = await this.getAccessToken();
     try {
       const response = await this.http.request<T>({
@@ -116,6 +196,10 @@ export class ZoomService {
   }
 
   private async getAccessToken(): Promise<string> {
+    if (!this.enabled) {
+      throw new BadGatewayException('Zoom integration is disabled.');
+    }
+
     if (this.tokenCache && this.tokenCache.expiresAt > Date.now()) {
       return this.tokenCache.accessToken;
     }
@@ -124,6 +208,11 @@ export class ZoomService {
     const url = `${this.oauthUrl}?grant_type=account_credentials&account_id=${encodeURIComponent(this.accountId)}`;
 
     try {
+      const redactedAccountId =
+        this.accountId.length > 6
+          ? `${this.accountId.slice(0, 3)}***${this.accountId.slice(-3)}`
+          : this.accountId;
+      this.logger.debug(`Requesting Zoom access token from ${this.oauthUrl} for account ${redactedAccountId}`);
       const response = await axios.post<ZoomTokenResponse>(url, null, {
         headers: {
           Authorization: `Basic ${credentials}`,
@@ -151,5 +240,32 @@ export class ZoomService {
       ? JSON.stringify(error.response.data)
       : error.message;
     return `status=${status} message=${message}`;
+  }
+
+  private buildPlaceholderMeeting(
+    hostId: string,
+    payload: Partial<CreateZoomMeetingPayload>,
+  ): ZoomMeetingResponse {
+    this.logger.warn(
+      `Issuing placeholder meeting for host ${hostId}. Check Zoom credentials and OAuth configuration if this is unexpected.`,
+    );
+    const now = new Date();
+    const id = Math.floor(now.getTime() / 1000);
+    return {
+      uuid: `placeholder-${id}`,
+      id,
+      host_id: hostId,
+      topic: payload.topic ?? 'Class session',
+      type: 2,
+      status: 'created',
+      start_time: payload.start_time,
+      duration: payload.duration,
+      timezone: payload.timezone,
+      agenda: payload.agenda,
+      created_at: now.toISOString(),
+      start_url: `https://meetings.local/start/${id}`,
+      join_url: `https://meetings.local/join/${id}`,
+      password: undefined,
+    };
   }
 }

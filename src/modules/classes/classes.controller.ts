@@ -40,7 +40,7 @@ export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
   @Post()
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Create a new class and provision a Zoom meeting' })
   @ApiCreatedResponse({ type: ClassEntity })
   async create(

@@ -51,145 +51,160 @@ export class ClassesService {
     actorId?: string,
     actorRole?: PrismaRole,
   ): Promise<ClassEntity> {
-    const start = new Date(dto.scheduledStart);
-    const end = new Date(dto.scheduledEnd);
+    const actorLabel = `${actorId ?? 'unknown'} (${actorRole ?? 'unknown'})`;
+    this.logger.log(
+      `Attempting to create class "${dto.title}" for academy ${dto.academyId} by ${actorLabel}`,
+    );
 
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new BadRequestException(
-        'Invalid date supplied for scheduledStart or scheduledEnd.',
-      );
-    }
+    try {
+      const start = new Date(dto.scheduledStart);
+      const end = new Date(dto.scheduledEnd);
 
-    if (end.getTime() <= start.getTime()) {
-      throw new BadRequestException(
-        'scheduledEnd must be later than scheduledStart.',
-      );
-    }
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        throw new BadRequestException(
+          'Invalid date supplied for scheduledStart or scheduledEnd.',
+        );
+      }
 
-    const teacherId =
-      actorRole === PrismaRole.TEACHER ? actorId : dto.teacherId;
+      if (end.getTime() <= start.getTime()) {
+        throw new BadRequestException(
+          'scheduledEnd must be later than scheduledStart.',
+        );
+      }
 
-    if (!teacherId) {
-      throw new BadRequestException('Teacher identifier is required.');
-    }
+      const teacherId =
+        actorRole === PrismaRole.TEACHER ? actorId : dto.teacherId;
 
-    if (
-      actorRole === PrismaRole.TEACHER &&
-      dto.teacherId &&
-      dto.teacherId !== actorId
-    ) {
-      throw new ForbiddenException(
-        'Teachers can only schedule classes for themselves.',
-      );
-    }
-
-    const teacher = await this.prisma.user.findUnique({
-      where: { id: teacherId },
-    });
-    if (!teacher) {
-      throw new NotFoundException('Teacher not found.');
-    }
-
-    if (teacher.status !== PrismaUserStatus.APPROVED) {
-      throw new BadRequestException('Teacher must be approved before scheduling classes.');
-    }
-
-    const academy = await this.prisma.academy.findUnique({
-      where: { id: dto.academyId },
-      select: { id: true, ownerId: true },
-    });
-    if (!academy) {
-      throw new NotFoundException('Academy not found.');
-    }
-
-    await this.ensureAcademyAccess(academy.id, actorId, actorRole);
-
-    if (
-      teacher.role !== PrismaRole.TEACHER &&
-      !(teacherId === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
-    ) {
-      throw new BadRequestException('Selected user must be a teacher or the academy owner.');
-    }
-
-    if (teacherId !== academy.ownerId) {
-      const membership = await this.prisma.academyMembership.findUnique({
-        where: {
-          academyId_userId: { academyId: academy.id, userId: teacherId },
-        },
-        select: { status: true, role: true },
-      });
+      if (!teacherId) {
+        throw new BadRequestException('Teacher identifier is required.');
+      }
 
       if (
-        !membership ||
-        membership.status !== AcademyMembershipStatus.APPROVED ||
-        membership.role !== AcademyMemberRole.TEACHER
+        actorRole === PrismaRole.TEACHER &&
+        dto.teacherId &&
+        dto.teacherId !== actorId
       ) {
-        throw new BadRequestException('Teacher must be an approved member of the selected academy.');
+        throw new ForbiddenException(
+          'Teachers can only schedule classes for themselves.',
+        );
       }
-    }
 
-    const durationMinutes = Math.max(
-      Math.round((end.getTime() - start.getTime()) / 60000),
-      1,
-    );
-    const hostIdentifier = teacher.zoomUserId ?? teacher.email;
+      const teacher = await this.prisma.user.findUnique({
+        where: { id: teacherId },
+      });
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found.');
+      }
 
-    const zoomMeeting = await this.zoomService.createMeeting(hostIdentifier, {
-      topic: dto.title,
-      agenda: dto.description,
-      start_time: start.toISOString(),
-      duration: durationMinutes,
-      timezone: dto.timezone,
-      settings: dto.zoomSettings ? { ...dto.zoomSettings } : undefined,
-    });
+      if (teacher.status !== PrismaUserStatus.APPROVED) {
+        throw new BadRequestException('Teacher must be approved before scheduling classes.');
+      }
 
-    const classId = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.class.create({
-        data: {
-          title: dto.title,
-          description: dto.description,
-          academyId: academy.id,
-          teacherId,
-          scheduledStart: start,
-          scheduledEnd: end,
-          durationMinutes,
-          timezone: dto.timezone,
-          creditsConsumed: dto.creditsConsumed,
-          zoomMeetingId: zoomMeeting.id.toString(),
-          zoomHostId: zoomMeeting.host_id,
-          zoomJoinUrl: zoomMeeting.join_url,
-          zoomStartUrl: zoomMeeting.start_url,
-          zoomPassword: zoomMeeting.password,
-          zoomUuid: zoomMeeting.uuid,
-          metadata: this.toInputJson(dto.metadata),
-          status: ClassStatus.UPCOMING,
-        },
+      const academy = await this.prisma.academy.findUnique({
+        where: { id: dto.academyId },
+        select: { id: true, ownerId: true },
+      });
+      if (!academy) {
+        throw new NotFoundException('Academy not found.');
+      }
+
+      await this.ensureAcademyAccess(academy.id, actorId, actorRole);
+
+      if (
+        teacher.role !== PrismaRole.TEACHER &&
+        !(teacherId === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
+      ) {
+        throw new BadRequestException('Selected user must be a teacher or the academy owner.');
+      }
+
+      if (teacherId !== academy.ownerId) {
+        const membership = await this.prisma.academyMembership.findUnique({
+          where: {
+            academyId_userId: { academyId: academy.id, userId: teacherId },
+          },
+          select: { status: true, role: true },
+        });
+
+        if (
+          !membership ||
+          membership.status !== AcademyMembershipStatus.APPROVED ||
+          membership.role !== AcademyMemberRole.TEACHER
+        ) {
+          throw new BadRequestException('Teacher must be an approved member of the selected academy.');
+        }
+      }
+
+      const durationMinutes = Math.max(
+        Math.round((end.getTime() - start.getTime()) / 60000),
+        1,
+      );
+      const hostIdentifier = teacher.zoomUserId ?? teacher.email;
+
+      const zoomMeeting = await this.zoomService.createMeeting(hostIdentifier, {
+        topic: dto.title,
+        agenda: dto.description,
+        start_time: start.toISOString(),
+        duration: durationMinutes,
+        timezone: dto.timezone,
+        settings: dto.zoomSettings ? { ...dto.zoomSettings } : undefined,
       });
 
-      if (dto.participants?.length) {
-        await tx.classParticipant.createMany({
-          data: dto.participants.map((participant) => ({
-            classId: created.id,
-            userId: participant.userId,
-            email: participant.email,
-            displayName: participant.displayName,
-            role: participant.role ?? ClassParticipantRole.STUDENT,
-            metadata: participant.userId
-              ? undefined
-              : (this.toInputJson({
-                  source: 'manual',
-                }) as Prisma.InputJsonValue),
-          })),
+      const classId = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.class.create({
+          data: {
+            title: dto.title,
+            description: dto.description,
+            academyId: academy.id,
+            teacherId,
+            scheduledStart: start,
+            scheduledEnd: end,
+            durationMinutes,
+            timezone: dto.timezone,
+            creditsConsumed: dto.creditsConsumed,
+            zoomMeetingId: zoomMeeting.id.toString(),
+            zoomHostId: zoomMeeting.host_id,
+            zoomJoinUrl: zoomMeeting.join_url,
+            zoomStartUrl: zoomMeeting.start_url,
+            zoomPassword: zoomMeeting.password,
+            zoomUuid: zoomMeeting.uuid,
+            metadata: this.toInputJson(dto.metadata),
+            status: ClassStatus.UPCOMING,
+          },
         });
-      }
 
-      return created.id;
-    });
+        if (dto.participants?.length) {
+          await tx.classParticipant.createMany({
+            data: dto.participants.map((participant) => ({
+              classId: created.id,
+              userId: participant.userId,
+              email: participant.email,
+              displayName: participant.displayName,
+              role: participant.role ?? ClassParticipantRole.STUDENT,
+              metadata: participant.userId
+                ? undefined
+                : (this.toInputJson({
+                    source: 'manual',
+                  }) as Prisma.InputJsonValue),
+            })),
+          });
+        }
 
-    this.logger.log(
-      `Created class ${classId} with Zoom meeting ${zoomMeeting.id}`,
-    );
-    return this.findOne(classId, actorId, actorRole);
+        return created.id;
+      });
+
+      this.logger.log(
+        `Created class ${classId} with Zoom meeting ${zoomMeeting.id} by teacher ${teacherId}`,
+      );
+      return this.findOne(classId, actorId, actorRole);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(
+        `Failed to create class "${dto.title}" for academy ${dto.academyId} by ${actorLabel}: ${message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
   }
 
   async findAll(

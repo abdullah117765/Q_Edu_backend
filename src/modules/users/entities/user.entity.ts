@@ -1,6 +1,22 @@
+import { AcademyMembershipStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from './role.enum';
 import { UserStatus } from './user-status.enum';
+
+export class UserAcademyMembershipSummary {
+  constructor(partial: Partial<UserAcademyMembershipSummary>) {
+    Object.assign(this, partial);
+  }
+
+  @ApiProperty()
+  academyId!: string;
+
+  @ApiPropertyOptional()
+  academyName?: string | null;
+
+  @ApiProperty({ enum: AcademyMembershipStatus })
+  status!: AcademyMembershipStatus;
+}
 
 export class UserEntity {
   constructor(partial: Partial<UserEntity>) {
@@ -71,6 +87,9 @@ export class UserEntity {
 
   @ApiProperty({ example: '2025-01-02T12:00:00.000Z' })
   updatedAt!: Date;
+
+  @ApiPropertyOptional({ type: () => [UserAcademyMembershipSummary] })
+  academies?: UserAcademyMembershipSummary[];
 
   @ApiPropertyOptional({ type: Object })
   _count?: Record<string, number> | null;

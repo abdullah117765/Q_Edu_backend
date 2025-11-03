@@ -140,7 +140,24 @@ export class UsersService {
       }),
     ]);
 
-    const data = users.map((user) => this.toEntity(user));
+    const data = users.map((userRecord) => {
+      const { academyMemberships, ...rest } = userRecord as typeof userRecord & {
+        academyMemberships?: Array<{
+          academyId: string;
+          status: AcademyMembershipStatus;
+          academy?: { id: string; name: string | null };
+        }>;
+      };
+      const entity = this.toEntity(rest as unknown as User);
+      if (Array.isArray(academyMemberships)) {
+        entity.academies = academyMemberships.map((membership) => ({
+          academyId: membership.academyId,
+          academyName: membership.academy?.name ?? null,
+          status: membership.status,
+        }));
+      }
+      return entity;
+    });
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
     const statusCountMap = this.extractStatusCounts(statusGroups);
@@ -451,7 +468,22 @@ export class UsersService {
       role === Role.TEACHER
         ? { _count: { select: { teachingClasses: true } } }
         : role === Role.STUDENT
-        ? { _count: { select: { classParticipants: true } } }
+        ? {
+            _count: { select: { classParticipants: true } },
+            academyMemberships: {
+              where: { status: AcademyMembershipStatus.APPROVED },
+              select: {
+                academyId: true,
+                status: true,
+                academy: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          }
         : undefined;
 
     const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
@@ -476,7 +508,24 @@ export class UsersService {
       }),
     ]);
 
-    const data = users.map((user) => this.toEntity(user));
+    const data = users.map((userRecord) => {
+      const { academyMemberships, ...rest } = userRecord as typeof userRecord & {
+        academyMemberships?: Array<{
+          academyId: string;
+          status: AcademyMembershipStatus;
+          academy?: { id: string; name: string | null };
+        }>;
+      };
+      const entity = this.toEntity(rest as unknown as User);
+      if (Array.isArray(academyMemberships)) {
+        entity.academies = academyMemberships.map((membership) => ({
+          academyId: membership.academyId,
+          academyName: membership.academy?.name ?? null,
+          status: membership.status,
+        }));
+      }
+      return entity;
+    });
     const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
 
     const statusCountMap = this.extractStatusCounts(statusGroups);

@@ -213,8 +213,8 @@ model Class {
   creditsConsumed        Int?
   zoomMeetingId          String?                 @unique
   zoomHostId             String?
-  zoomJoinUrl            String?
-  zoomStartUrl           String?
+  zoomJoinUrl            String?                @db.VarChar(512)
+  zoomStartUrl           String?                @db.VarChar(512)
   zoomPassword           String?
   zoomUuid               String?
   metadata               Json?
