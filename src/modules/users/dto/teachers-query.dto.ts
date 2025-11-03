@@ -13,4 +13,9 @@ export class TeachersQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter teachers who belong to a specific academy' })
+  @IsOptional()
+  @IsString()
+  academyId?: string;
 }

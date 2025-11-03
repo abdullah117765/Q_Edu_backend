@@ -1,8 +1,25 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+﻿import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+  ParseFilePipe,
+  FileTypeValidator,
+  MaxFileSizeValidator,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -23,10 +40,14 @@ import { StudentsQueryDto } from './dto/students-query.dto';
 import { TeachersQueryDto } from './dto/teachers-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Role } from './entities/role.enum';
 import { UserEntity } from './entities/user.entity';
 import { UserStatus } from './entities/user-status.enum';
 import { UsersService } from './users.service';
+import { UploadedFile as UploadedFileType } from '../../common/interfaces/uploaded-file.interface';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -106,6 +127,47 @@ export class UsersController {
     return this.usersService.findAll(query, currentUser ? { id: currentUser.id, role: currentUser.role } : undefined);
   }
 
+  @Get('me')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @ApiOperation({ summary: 'Retrieve the authenticated user profile' })
+  @ApiOkResponse({ type: UserEntity })
+  getProfile(@Req() request: Request) {
+    const currentUser = request['user'] as UserEntity;
+    return this.usersService.getOwnProfile(currentUser.id);
+  }
+
+  @Patch('me')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @ApiOperation({ summary: 'Update the authenticated user profile' })
+  @ApiBody({ type: UpdateProfileDto })
+  @ApiOkResponse({ type: UserEntity })
+  updateProfile(@Req() request: Request, @Body() dto: UpdateProfileDto) {
+    const currentUser = request['user'] as UserEntity;
+    return this.usersService.updateOwnProfile(currentUser.id, dto);
+  }
+
+  @Patch('me/photo')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @ApiOperation({ summary: 'Upload or replace the profile photo' })
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({ type: UserEntity })
+  async updateProfilePhoto(
+    @Req() request: Request,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /^image\/(png|jpe?g|gif|webp)$/ }),
+        ],
+      }),
+    )
+    file: UploadedFileType,
+  ) {
+    const currentUser = request['user'] as UserEntity;
+    return this.usersService.updateProfilePhoto(currentUser.id, file);
+  }
+
   @Get(':id')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'Retrieve a single user' })
@@ -160,3 +222,5 @@ export class UsersController {
     return { message: 'User deleted successfully.' };
   }
 }
+
+

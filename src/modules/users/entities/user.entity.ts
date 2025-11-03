@@ -22,6 +22,38 @@ export class UserEntity {
   @ApiProperty({ example: '+1 555 123 4567' })
   phoneNumber?: string | null;
 
+  @ApiPropertyOptional({ example: 'Non-binary unicorn' })
+  gender?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'Educator who loves project-based adventures and storytelling.',
+  })
+  bio?: string | null;
+
+  @ApiPropertyOptional({ example: '2001-05-25T00:00:00.000Z' })
+  dateOfBirth?: Date | null;
+
+  @ApiPropertyOptional({ example: 'Sunset Boulevard' })
+  addressStreet?: string | null;
+
+  @ApiPropertyOptional({ example: '42B' })
+  addressHouse?: string | null;
+
+  @ApiPropertyOptional({ example: 'Emerald City' })
+  addressCity?: string | null;
+
+  @ApiPropertyOptional({ example: 'Oz Territory' })
+  addressState?: string | null;
+
+  @ApiPropertyOptional({ example: 'Wonderland' })
+  addressCountry?: string | null;
+
+  @ApiPropertyOptional({ example: '/storage/profile-photos/abc123.png' })
+  profilePhotoUrl?: string | null;
+
+  @ApiPropertyOptional()
+  profilePhotoKey?: string | null;
+
   @ApiProperty({ enum: Role, example: Role.STUDENT })
   role!: Role;
 

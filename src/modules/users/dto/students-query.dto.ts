@@ -13,4 +13,9 @@ export class StudentsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter students who belong to a specific academy' })
+  @IsOptional()
+  @IsString()
+  academyId?: string;
 }

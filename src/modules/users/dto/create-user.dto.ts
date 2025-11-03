@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MinLength, ValidateIf } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MinLength } from 'class-validator';
 import { Role } from '../entities/role.enum';
 import { PHONE_REGEX } from './phone-regex.constant';
 
@@ -42,7 +42,7 @@ export class CreateUserDto {
     minLength: 3,
     maxLength: 120,
   })
-  @ValidateIf((dto) => (dto.role ?? Role.STUDENT) === Role.ACADEMY_OWNER)
+  @IsOptional()
   @IsString()
   @Length(3, 120)
   academyName?: string;

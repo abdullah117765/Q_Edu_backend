@@ -1,10 +1,13 @@
-﻿import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AcademyMembershipStatus, Prisma, Role as PrismaRole, UserStatus as PrismaUserStatus, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { UploadedFile } from '../../common/interfaces/uploaded-file.interface';
+
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AcademiesService } from '../academies/academies.service';
+import { StorageService } from '../../storage/storage.service';
 import { AdminsQueryDto } from './dto/admins-query.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -14,6 +17,7 @@ import { StudentsQueryDto } from './dto/students-query.dto';
 import { TeachersQueryDto } from './dto/teachers-query.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Role } from './entities/role.enum';
 import { UserStatus } from './entities/user-status.enum';
 import { UserEntity } from './entities/user.entity';
@@ -43,6 +47,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly academiesService: AcademiesService,
+    private readonly storage: StorageService,
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
@@ -57,10 +62,6 @@ export class UsersService {
       if (superAdminCount > 0) {
         throw new ConflictException('A super admin already exists.');
       }
-    }
-
-    if (role === Role.ACADEMY_OWNER && !dto.academyName?.trim()) {
-      throw new BadRequestException('Academy name is required for academy owner accounts.');
     }
 
     const hashedPassword = await this.hashPassword(dto.password);
@@ -79,13 +80,13 @@ export class UsersService {
 
     if (role === Role.ACADEMY_OWNER) {
       try {
-        await this.academiesService.createForOwner({
+        await this.academiesService.ensureAcademyForOwner({
           ownerId: user.id,
-          name: dto.academyName!.trim(),
-          description: dto.academyDescription?.trim(),
+          name: dto.academyName,
+          description: dto.academyDescription,
         });
       } catch (error) {
-        this.logger.error(`Failed to create academy for owner ${user.id}: ${(error as Error).message}`);
+        this.logger.error(`Failed to provision academy for owner ${user.id}: ${(error as Error).message}`);
         await this.prisma.user.delete({ where: { id: user.id } });
         throw error;
       }
@@ -180,20 +181,7 @@ export class UsersService {
   }
 
   async findOne(id: string, currentUser?: CurrentUserContext): Promise<UserEntity> {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      include: {
-        academyMemberships: {
-          select: {
-            academyId: true,
-            status: true,
-          },
-        },
-        ownedAcademy: {
-          select: { id: true },
-        },
-      },
-    });
+    const user = await this.fetchUserWithAssociations(id);
     if (!user) {
       throw new NotFoundException('User with the specified id was not found.');
     }
@@ -219,6 +207,136 @@ export class UsersService {
     }
 
     return this.toEntity(user);
+  }
+
+  async getOwnProfile(userId: string): Promise<UserEntity> {
+    const user = await this.fetchUserWithAssociations(userId);
+    if (!user) {
+      throw new NotFoundException('User with the specified id was not found.');
+    }
+
+    return this.toEntity(user);
+  }
+
+  async updateOwnProfile(userId: string, dto: UpdateProfileDto): Promise<UserEntity> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User with the specified id was not found.');
+    }
+
+    const data: Prisma.UserUpdateInput = {};
+
+    if (dto.firstName !== undefined) {
+      const firstName = dto.firstName.trim();
+      if (!firstName) {
+        throw new BadRequestException('First name cannot be empty.');
+      }
+      data.firstName = firstName;
+    }
+
+    if (dto.lastName !== undefined) {
+      data.lastName = this.normaliseNullableString(dto.lastName);
+    }
+
+    if (dto.phoneNumber !== undefined) {
+      const normalisedPhone = this.normaliseNullableString(dto.phoneNumber);
+      if (!normalisedPhone) {
+        throw new BadRequestException('Phone number cannot be empty.');
+      }
+      data.phoneNumber = normalisedPhone;
+    }
+
+    if (dto.gender !== undefined) {
+      data.gender = this.normaliseNullableString(dto.gender);
+    }
+
+    if (dto.bio !== undefined) {
+      data.bio = this.normaliseNullableString(dto.bio);
+    }
+
+    if (dto.addressStreet !== undefined) {
+      data.addressStreet = this.normaliseNullableString(dto.addressStreet);
+    }
+
+    if (dto.addressHouse !== undefined) {
+      data.addressHouse = this.normaliseNullableString(dto.addressHouse);
+    }
+
+    if (dto.addressCity !== undefined) {
+      data.addressCity = this.normaliseNullableString(dto.addressCity);
+    }
+
+    if (dto.addressState !== undefined) {
+      data.addressState = this.normaliseNullableString(dto.addressState);
+    }
+
+    if (dto.addressCountry !== undefined) {
+      data.addressCountry = this.normaliseNullableString(dto.addressCountry);
+    }
+
+    if (dto.dateOfBirth !== undefined) {
+      const parsed = dto.dateOfBirth ? new Date(dto.dateOfBirth) : null;
+      if (parsed && Number.isNaN(parsed.getTime())) {
+        throw new BadRequestException('Date of birth is invalid.');
+      }
+      data.dateOfBirth = parsed;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return this.toEntity(user);
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+
+    const refreshed = await this.fetchUserWithAssociations(userId);
+    return this.toEntity(refreshed ?? user);
+  }
+
+  async updateProfilePhoto(userId: string, file: UploadedFile): Promise<UserEntity> {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('No file was provided.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User with the specified id was not found.');
+    }
+
+    let storedKey: string | null = null;
+    let storedUrl: string | null = null;
+
+    try {
+      const stored = await this.storage.saveFile({
+        buffer: file.buffer,
+        originalName: file.originalname ?? 'profile-photo',
+        directory: 'profile-photos',
+      });
+      storedKey = stored.key;
+      storedUrl = stored.url;
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          profilePhotoKey: storedKey,
+          profilePhotoUrl: storedUrl,
+        },
+      });
+
+      if (user.profilePhotoKey && user.profilePhotoKey !== storedKey) {
+        await this.storage.deleteFile(user.profilePhotoKey);
+      }
+
+      const refreshed = await this.fetchUserWithAssociations(userId);
+      return this.toEntity(refreshed ?? user);
+    } catch (error) {
+      if (storedKey) {
+        await this.storage.deleteFile(storedKey);
+      }
+      throw error;
+    }
   }
 
   async findByEmailWithPassword(email: string): Promise<User | null> {
@@ -296,9 +414,22 @@ export class UsersService {
     query: RoleQueryDto,
     currentUser?: CurrentUserContext,
   ): Promise<UsersPaginatedResponse> {
+    const academyFilter =
+      'academyId' in query && query.academyId
+        ? {
+            academyMemberships: {
+              some: {
+                academyId: query.academyId,
+                status: AcademyMembershipStatus.APPROVED,
+              },
+            },
+          }
+        : {};
+
     const baseWhere: Prisma.UserWhereInput = {
       role,
       ...(query.status ? { status: query.status } : {}),
+      ...academyFilter,
     };
 
     const search = query.search?.trim();
@@ -473,7 +604,38 @@ export class UsersService {
     const { password, ...rest } = user;
     return new UserEntity(rest);
   }
+
+  private async fetchUserWithAssociations(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        academyMemberships: {
+          select: {
+            academyId: true,
+            status: true,
+          },
+        },
+        ownedAcademy: {
+          select: { id: true },
+        },
+      },
+    });
+  }
+
+  private normaliseNullableString(value?: string | null): string | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
 }
+
 
 
 
