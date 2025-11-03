@@ -330,18 +330,11 @@ export class AuthService {
   }
 
   private toEntity(user: User): UserEntity {
+    const { password, ...rest } = user;
     return new UserEntity({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phoneNumber: user.phoneNumber,
-      role: user.role as Role,
-      status: user.status as UserStatus,
-      rejectionReason: user.rejectionReason,
-      isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      ...rest,
+      role: rest.role as Role,
+      status: rest.status as UserStatus,
     });
   }
   

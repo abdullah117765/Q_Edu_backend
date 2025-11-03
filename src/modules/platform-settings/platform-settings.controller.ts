@@ -24,7 +24,7 @@ export class PlatformSettingsController {
   ) {}
 
   @Get()
-  @Auth(Role.SUPER_ADMIN)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'Retrieve current platform settings' })
   @ApiOkResponse({ type: PlatformSettingsEntity })
   async getSettings(): Promise<PlatformSettingsEntity> {

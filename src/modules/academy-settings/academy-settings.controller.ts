@@ -8,6 +8,7 @@ import {
 import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { Role } from '../users/entities/role.enum';
+import { AcademiesService } from '../academies/academies.service';
 import { AcademySettingsEntity } from './entities/academy-settings.entity';
 import { UpdateAcademySettingsDto } from './dto/update-academy-settings.dto';
 import { AcademySettingsService } from './academy-settings.service';
@@ -20,6 +21,7 @@ type RequestWithUser = Request & { user?: { id?: string } };
 export class AcademySettingsController {
   constructor(
     private readonly academySettingsService: AcademySettingsService,
+    private readonly academiesService: AcademiesService,
   ) {}
 
   @Get()
@@ -32,6 +34,7 @@ export class AcademySettingsController {
     @Req() request: RequestWithUser,
   ): Promise<AcademySettingsEntity> {
     const ownerId = request.user?.id;
+    await this.academiesService.ensureOwnerAcademyApproved(ownerId as string);
     return this.academySettingsService.getSettings(ownerId as string);
   }
 
@@ -44,6 +47,7 @@ export class AcademySettingsController {
     @Body() dto: UpdateAcademySettingsDto,
   ): Promise<AcademySettingsEntity> {
     const ownerId = request.user?.id;
+    await this.academiesService.ensureOwnerAcademyApproved(ownerId as string);
     return this.academySettingsService.updateSettings(ownerId as string, dto);
   }
 }

@@ -2,9 +2,31 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   AcademyMemberRole,
   AcademyMembershipStatus,
+  AcademyStatus,
   Role as PrismaRole,
   UserStatus as PrismaUserStatus,
 } from '@prisma/client';
+
+export class AcademyOwnerSummary {
+  constructor(partial: Partial<AcademyOwnerSummary>) {
+    Object.assign(this, partial);
+  }
+
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  firstName!: string;
+
+  @ApiPropertyOptional()
+  lastName?: string | null;
+
+  @ApiProperty()
+  email!: string;
+
+  @ApiPropertyOptional()
+  phoneNumber?: string | null;
+}
 
 export class AcademySummaryEntity {
   constructor(partial: Partial<AcademySummaryEntity>) {
@@ -25,6 +47,24 @@ export class AcademySummaryEntity {
 
   @ApiProperty()
   ownerId!: string;
+
+  @ApiProperty({ description: 'True once the owner has submitted onboarding details' })
+  profileCompleted!: boolean;
+
+  @ApiProperty({ enum: AcademyStatus })
+  status!: AcademyStatus;
+
+  @ApiPropertyOptional()
+  rejectionReason?: string | null;
+
+  @ApiPropertyOptional()
+  reviewedById?: string | null;
+
+  @ApiPropertyOptional()
+  reviewedAt?: Date | null;
+
+  @ApiPropertyOptional({ type: () => AcademyOwnerSummary })
+  owner?: AcademyOwnerSummary;
 
   @ApiProperty()
   createdAt!: Date;

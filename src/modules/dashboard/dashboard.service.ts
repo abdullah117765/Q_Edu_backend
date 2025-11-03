@@ -1,5 +1,6 @@
-﻿import { Injectable } from '@nestjs/common';
+﻿import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
+  AcademyStatus,
   ClassStatus,
   Role as PrismaRole,
   UserStatus,
@@ -25,6 +26,28 @@ export class DashboardService {
   ) {}
 
   async getOverview(user: UserEntity): Promise<DashboardOverviewDto> {
+    if (user.role === PrismaRole.ACADEMY_OWNER) {
+      const academy = await this.prisma.academy.findUnique({
+        where: { ownerId: user.id },
+        select: { status: true, rejectionReason: true },
+      });
+
+      if (!academy) {
+        throw new ForbiddenException('Complete your academy onboarding before accessing the dashboard.');
+      }
+
+      if (academy.status === AcademyStatus.PENDING) {
+        throw new ForbiddenException('Your academy submission is pending approval.');
+      }
+
+      if (academy.status === AcademyStatus.REJECTED) {
+        const reasonMessage = academy.rejectionReason
+          ? ` Reason: ${academy.rejectionReason}`
+          : '';
+        throw new ForbiddenException(`Your academy submission was rejected.${reasonMessage}`);
+      }
+    }
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 

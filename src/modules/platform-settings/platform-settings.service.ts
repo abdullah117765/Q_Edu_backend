@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS: PlatformSettingsMap = {
   dailyDigestEmail: true,
   supportEmail: 'support@qedu.io',
   maxAcademiesPerTeacher: 3,
-  maxAcademiesPerStudent: 2,
+  maxAcademiesPerStudent: 1,
 };
 
 @Injectable()
