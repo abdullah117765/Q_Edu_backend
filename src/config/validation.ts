@@ -25,4 +25,8 @@ export const validationSchema = Joi.object({
   ZOOM_OAUTH_URL: Joi.string().uri().default('https://zoom.us/oauth/token'),
   CORS_ALLOWED_ORIGINS: Joi.string().allow('').optional(),
   ALLOWED_ORIGINS: Joi.string().allow('').optional(),
+  FILE_STORAGE_DRIVER: Joi.string().valid('local').default('local'),
+  LOCAL_STORAGE_ROOT: Joi.string().allow('').optional(),
+  FILE_STORAGE_PUBLIC_URL: Joi.string().uri().allow('').optional(),
+  FILE_STORAGE_PUBLIC_ROOT: Joi.string().allow('').default('/storage'),
 });

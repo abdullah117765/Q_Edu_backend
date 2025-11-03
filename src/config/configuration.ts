@@ -1,3 +1,5 @@
+import { join } from 'path';
+
 const parseAllowedOrigins = (value?: string): string[] => {
   if (!value) {
     return [];
@@ -7,6 +9,13 @@ const parseAllowedOrigins = (value?: string): string[] => {
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+};
+
+const ensureLeadingSlash = (value: string): string => {
+  if (!value) {
+    return '/storage';
+  }
+  return value.startsWith('/') ? value : `/${value}`;
 };
 
 export default () => ({
@@ -53,4 +62,20 @@ export default () => ({
       process.env.CORS_ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGINS ?? '',
     ),
   },
+  storage: (() => {
+    const driver = (process.env.FILE_STORAGE_DRIVER ?? 'local').toLowerCase();
+    const localRoot =
+      process.env.LOCAL_STORAGE_ROOT && process.env.LOCAL_STORAGE_ROOT.trim().length > 0
+        ? process.env.LOCAL_STORAGE_ROOT.trim()
+        : join(process.cwd(), 'storage', 'uploads');
+
+    return {
+      driver,
+      local: {
+        root: localRoot,
+      },
+      publicServeRoot: ensureLeadingSlash(process.env.FILE_STORAGE_PUBLIC_ROOT ?? '/storage'),
+      publicBaseUrl: process.env.FILE_STORAGE_PUBLIC_URL?.trim() || '',
+    };
+  })(),
 });

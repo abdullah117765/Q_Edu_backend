@@ -45,6 +45,12 @@ enum AcademyMembershipStatus {
   REVOKED
 }
 
+enum AcademyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ZoomCreditTransactionType {
   CREDIT
   DEBIT
@@ -71,6 +77,16 @@ model User {
   firstName                          String
   lastName                           String?
   phoneNumber                        String
+  gender                             String?
+  bio                                String?
+  dateOfBirth                        DateTime?
+  addressStreet                      String?
+  addressHouse                       String?
+  addressCity                        String?
+  addressState                       String?
+  addressCountry                     String?
+  profilePhotoKey                    String?
+  profilePhotoUrl                    String?
   role                               Role                    @default(STUDENT)
   status                             UserStatus              @default(PENDING)
   rejectionReason                    String?
@@ -94,6 +110,7 @@ model User {
   ownedAcademy                       Academy?                @relation("AcademyOwner")
   academyMemberships                 AcademyMembership[]
   membershipActions                  AcademyMembership[]     @relation("AcademyMembershipActionedBy")
+  reviewedAcademies                  Academy[]               @relation("AcademyReviewedBy")
 
   @@index([role])
   @@index([status])
@@ -143,15 +160,22 @@ model Academy {
   slug        String              @unique
   description String?
   ownerId     String              @unique
+  profileCompleted Boolean        @default(false)
+  status      AcademyStatus       @default(PENDING)
+  rejectionReason String?
+  reviewedById String?
+  reviewedAt  DateTime?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   owner       User                @relation("AcademyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  reviewedBy  User?               @relation("AcademyReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   memberships AcademyMembership[]
   classes     Class[]
   resources   Resource[]
 
   @@index([name])
   @@index([ownerId])
+  @@index([status])
 }
 
 model AcademyMembership {

@@ -1,26 +1,45 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+import { join } from 'path';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const cookieParser = require('cookie-parser');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const helmet = require('helmet');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+
+  const storageConfig = configService.get<{
+    driver?: string;
+    local?: { root?: string };
+    publicServeRoot?: string;
+  }>('storage');
 
   const environment = configService.get<string>('app.env') ?? 'development';
   const isProduction = environment === 'production';
 
   app.setGlobalPrefix('api');
+  if (storageConfig?.driver === 'local') {
+    const localRoot = storageConfig.local?.root ?? join(process.cwd(), 'storage', 'uploads');
+    const serveRoot = storageConfig.publicServeRoot ?? '/storage';
+    const normalizedPrefix = serveRoot.startsWith('/') ? serveRoot : `/${serveRoot}`;
+    const prefixWithTrailingSlash = normalizedPrefix.endsWith('/')
+      ? normalizedPrefix
+      : `${normalizedPrefix}/`;
+    app.useStaticAssets(localRoot, {
+      prefix: prefixWithTrailingSlash,
+    });
+  }
   const configuredOrigins = configService.get<string[]>('cors.allowedOrigins') ?? [];
   const defaultDevOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'];
   const allowedOrigins = configuredOrigins.length > 0 ? configuredOrigins : defaultDevOrigins;

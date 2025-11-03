@@ -11,6 +11,7 @@ import {
   AcademyMemberRole,
   AcademyMembership,
   AcademyMembershipStatus,
+  AcademyStatus,
   Prisma,
   Role as PrismaRole,
   UserStatus as PrismaUserStatus,
@@ -21,7 +22,14 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 import { AcademyDirectoryQueryDto } from './dto/academy-directory-query.dto';
 import { AcademyMembershipQueryDto } from './dto/academy-membership-query.dto';
 import { UpdateAcademyMembershipStatusDto } from './dto/update-academy-membership-status.dto';
-import { AcademyDetailEntity, AcademyMembershipEntity, AcademySummaryEntity } from './entities/academy.entity';
+import { AdminAcademyQueryDto } from './dto/admin-academy-query.dto';
+import { SubmitOwnerOnboardingDto } from './dto/submit-owner-onboarding.dto';
+import { UpdateAcademyReviewDto } from './dto/update-academy-review.dto';
+import {
+  AcademyDetailEntity,
+  AcademyMembershipEntity,
+  AcademySummaryEntity,
+} from './entities/academy.entity';
 import { AcademyMembershipAction } from './dto/update-academy-membership-status.dto';
 
 type TransactionClient = Prisma.TransactionClient;
@@ -35,22 +43,35 @@ export class AcademiesService {
     private readonly platformSettingsService: PlatformSettingsService,
   ) {}
 
-  async createForOwner(params: {
+  async ensureAcademyForOwner(params: {
     ownerId: string;
-    name: string;
+    name?: string | null;
     description?: string | null;
   }): Promise<AcademyDetailEntity> {
     const existing = await this.prisma.academy.findUnique({
       where: { ownerId: params.ownerId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
     });
     if (existing) {
       return this.buildAcademyDetail(existing);
     }
 
-    const trimmedName = params.name.trim();
+    const trimmedName = params.name?.trim() || (await this.buildDefaultAcademyName(params.ownerId));
     if (!trimmedName) {
       throw new BadRequestException('Academy name cannot be empty.');
     }
+
+    const normalisedDescription = params.description?.trim() || null;
 
     const created = await this.prisma.$transaction(async (tx) => {
       const slug = await this.generateUniqueSlug(trimmedName, tx);
@@ -59,19 +80,93 @@ export class AcademiesService {
           ownerId: params.ownerId,
           name: trimmedName,
           slug,
-          description: params.description?.trim() || null,
+          description: normalisedDescription,
+          status: AcademyStatus.PENDING,
+          profileCompleted: Boolean(params.name?.trim()),
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
         },
       });
     });
 
-    this.logger.log(`Academy ${created.id} created for owner ${params.ownerId}`);
+    this.logger.log(`Academy ${created.id} provisioned for owner ${params.ownerId}`);
     return this.buildAcademyDetail(created);
   }
 
+  async submitOwnerOnboarding(ownerId: string, dto: SubmitOwnerOnboardingDto): Promise<AcademyDetailEntity> {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { id: true, role: true },
+    });
+    if (!owner || owner.role !== PrismaRole.ACADEMY_OWNER) {
+      throw new ForbiddenException('Only academy owners can submit onboarding details.');
+    }
+
+    const trimmedName = dto.name.trim();
+    if (!trimmedName) {
+      throw new BadRequestException('Academy name cannot be empty.');
+    }
+
+    const normalisedDescription = dto.description?.trim() || null;
+    const existing = await this.prisma.academy.findUnique({ where: { ownerId } });
+
+    let record: Academy;
+    if (!existing) {
+      return this.ensureAcademyForOwner({
+        ownerId,
+        name: trimmedName,
+        description: normalisedDescription,
+      });
+    } else {
+      const shouldResetReview = existing.status !== AcademyStatus.APPROVED;
+      record = await this.prisma.academy.update({
+        where: { id: existing.id },
+        data: {
+          name: trimmedName,
+          description: normalisedDescription,
+          profileCompleted: true,
+          ...(shouldResetReview
+            ? {
+                status: AcademyStatus.PENDING,
+                rejectionReason: null,
+                reviewedAt: null,
+                reviewedById: null,
+              }
+            : {}),
+        },
+      });
+      this.logger.log(`Academy ${record.id} updated by owner ${ownerId}`);
+    }
+
+    return this.buildAcademyDetail(record);
+  }
+
   async getAcademyForOwner(ownerId: string): Promise<AcademyDetailEntity> {
-    const academy = await this.prisma.academy.findUnique({ where: { ownerId } });
+    const academy = await this.prisma.academy.findUnique({
+      where: { ownerId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
     if (!academy) {
-      throw new NotFoundException('No academy is associated with your account yet.');
+      return this.ensureAcademyForOwner({ ownerId });
     }
 
     return this.buildAcademyDetail(academy);
@@ -81,7 +176,9 @@ export class AcademiesService {
     const { page, limit } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.AcademyWhereInput = {};
+    const where: Prisma.AcademyWhereInput = {
+      status: AcademyStatus.APPROVED,
+    };
     const search = query.search?.trim();
     if (search) {
       where.OR = [
@@ -117,6 +214,149 @@ export class AcademiesService {
     };
   }
 
+  async listForAdmin(
+    query: AdminAcademyQueryDto,
+  ): Promise<PaginatedResponse<AcademySummaryEntity> & { summary: Record<'approved' | 'pending' | 'rejected', number> }> {
+    const { page, limit } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.AcademyWhereInput = {};
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { slug: { contains: search.toLowerCase() } },
+        { description: { contains: search } },
+        { owner: { email: { contains: search } } },
+      ];
+    }
+
+    const [total, academies, statusGroups] = await this.prisma.$transaction([
+      this.prisma.academy.count({ where }),
+      this.prisma.academy.findMany({
+        where,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.academy.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        orderBy: { status: 'asc' },
+      }),
+    ]);
+
+    const data = academies.map((academy) => this.toSummaryEntity(academy));
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+    return {
+      data,
+      meta: {
+        total,
+        count: data.length,
+        currentPage: page,
+        totalPages,
+        nextPage: page < totalPages ? page + 1 : null,
+        previousPage: page > 1 ? page - 1 : null,
+      },
+      summary: this.buildAcademyStatusSummary(statusGroups),
+    };
+  }
+
+  async getAcademyForAdmin(academyId: string): Promise<AcademyDetailEntity> {
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: academyId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
+
+    if (!academy) {
+      throw new NotFoundException('Academy not found.');
+    }
+
+    return this.buildAcademyDetail(academy);
+  }
+
+  async reviewAcademy(
+    academyId: string,
+    reviewerId: string,
+    dto: UpdateAcademyReviewDto,
+  ): Promise<AcademyDetailEntity> {
+    if (dto.status === AcademyStatus.PENDING) {
+      throw new BadRequestException('Use owner onboarding to resubmit academy details.');
+    }
+
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: academyId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
+
+    if (!academy) {
+      throw new NotFoundException('Academy not found.');
+    }
+
+    const rejectionReason =
+      dto.status === AcademyStatus.REJECTED ? dto.reason?.trim() ?? null : null;
+
+    const updated = await this.prisma.academy.update({
+      where: { id: academyId },
+      data: {
+        status: dto.status,
+        rejectionReason,
+        reviewedById: reviewerId,
+        reviewedAt: new Date(),
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
+
+    this.logger.log(`Academy ${academyId} set to ${dto.status} by ${reviewerId}`);
+    return this.buildAcademyDetail(updated);
+  }
+
   async requestMembership(userId: string, academyId: string): Promise<AcademyMembershipEntity> {
     const [user, academy] = await this.prisma.$transaction([
       this.prisma.user.findUnique({
@@ -132,6 +372,9 @@ export class AcademiesService {
 
     if (!academy) {
       throw new NotFoundException('Academy not found.');
+    }
+    if (academy.status !== AcademyStatus.APPROVED) {
+      throw new BadRequestException('This academy is not accepting new members yet.');
     }
 
     if (user.status !== PrismaUserStatus.APPROVED) {
@@ -197,14 +440,48 @@ export class AcademiesService {
     return this.toMembershipEntity(updated);
   }
 
+  async withdrawMembership(userId: string, membershipId: string): Promise<AcademyMembershipEntity> {
+    const membership = await this.prisma.academyMembership.findUnique({
+      where: { id: membershipId },
+      include: {
+        user: true,
+        academy: true,
+      },
+    });
+
+    if (!membership || membership.userId !== userId) {
+      throw new NotFoundException('Membership record not found.');
+    }
+
+    if (membership.status === AcademyMembershipStatus.APPROVED) {
+      const updated = await this.prisma.academyMembership.update({
+        where: { id: membershipId },
+        data: {
+          status: AcademyMembershipStatus.REVOKED,
+          reason: 'Cancelled by member',
+          respondedAt: new Date(),
+          actionedById: null,
+        },
+        include: { user: true, academy: true },
+      });
+      this.logger.log(`Membership ${membershipId} revoked by member ${userId}`);
+      return this.toMembershipEntity(updated);
+    }
+
+    if (membership.status !== AcademyMembershipStatus.PENDING) {
+      throw new BadRequestException('Only pending or approved memberships can be withdrawn.');
+    }
+
+    await this.prisma.academyMembership.delete({ where: { id: membershipId } });
+    this.logger.log(`Membership request ${membershipId} withdrawn by member ${userId}`);
+    return this.toMembershipEntity(membership);
+  }
+
   async listMembershipsForOwner(
     ownerId: string,
     query: AcademyMembershipQueryDto,
   ): Promise<PaginatedResponse<AcademyMembershipEntity>> {
-    const academy = await this.prisma.academy.findUnique({ where: { ownerId } });
-    if (!academy) {
-      throw new NotFoundException('No academy associated with your account.');
-    }
+    const academy = await this.requireOwnerAcademy(ownerId, { requireApproved: true });
 
     const where: Prisma.AcademyMembershipWhereInput = {
       academyId: academy.id,
@@ -312,6 +589,9 @@ export class AcademiesService {
     if (membership.academy.ownerId !== ownerId) {
       throw new ForbiddenException('You can only manage memberships for your own academy.');
     }
+    if (membership.academy.status !== AcademyStatus.APPROVED) {
+      throw new ForbiddenException('Only approved academies can manage memberships.');
+    }
 
     switch (dto.action) {
       case AcademyMembershipAction.APPROVE:
@@ -399,8 +679,8 @@ export class AcademiesService {
     }
 
     if (role === PrismaRole.ACADEMY_OWNER) {
-      const academy = await this.prisma.academy.findUnique({
-        where: { ownerId: userId },
+      const academy = await this.prisma.academy.findFirst({
+        where: { ownerId: userId, status: AcademyStatus.APPROVED },
         select: { id: true },
       });
       return {
@@ -423,7 +703,17 @@ export class AcademiesService {
     };
   }
 
-  private async buildAcademyDetail(record: Academy): Promise<AcademyDetailEntity> {
+  private async buildAcademyDetail(
+    record: Academy & {
+      owner?: {
+        id: string;
+        firstName: string;
+        lastName: string | null;
+        email: string;
+        phoneNumber: string | null;
+      } | null;
+    },
+  ): Promise<AcademyDetailEntity> {
     const [teacherCount, studentCount, pendingCount] = await this.prisma.$transaction([
       this.prisma.academyMembership.count({
         where: {
@@ -444,24 +734,84 @@ export class AcademiesService {
       }),
     ]);
 
+    const summary = this.toSummaryEntity(record);
+
     return new AcademyDetailEntity({
-      ...record,
+      ...summary,
       teacherCount,
       studentCount,
       pendingCount,
     });
   }
 
-  private toSummaryEntity(record: Academy): AcademySummaryEntity {
-    return new AcademySummaryEntity({
-      id: record.id,
-      name: record.name,
-      slug: record.slug,
-      description: record.description,
-      ownerId: record.ownerId,
+  private toSummaryEntity(
+    record: Academy & {
+      owner?: {
+        id: string;
+        firstName: string;
+        lastName: string | null;
+        email: string;
+        phoneNumber: string | null;
+      } | null;
+    },
+    ): AcademySummaryEntity {
+      const summary = new AcademySummaryEntity({
+        id: record.id,
+        name: record.name,
+        slug: record.slug,
+        description: record.description,
+        ownerId: record.ownerId,
+        profileCompleted: Boolean(record.profileCompleted),
+        status: record.status,
+      rejectionReason: record.rejectionReason,
+      reviewedById: record.reviewedById,
+      reviewedAt: record.reviewedAt,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     });
+
+    if (record.owner) {
+      summary.owner = {
+        id: record.owner.id,
+        firstName: record.owner.firstName,
+        lastName: record.owner.lastName,
+        email: record.owner.email,
+        phoneNumber: record.owner.phoneNumber,
+      };
+    }
+
+    return summary;
+  }
+
+  private buildAcademyStatusSummary(
+    groups: Array<{
+      status: AcademyStatus;
+      _count?: { _all?: number } | number | true | null;
+    }>,
+  ): Record<'approved' | 'pending' | 'rejected', number> {
+    const summary: Record<'approved' | 'pending' | 'rejected', number> = {
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+    };
+
+    groups.forEach((group) => {
+      const value =
+        typeof group._count === 'number'
+          ? group._count
+          : group._count && typeof group._count === 'object' && typeof group._count._all === 'number'
+          ? group._count._all
+          : 0;
+      if (group.status === AcademyStatus.APPROVED) {
+        summary.approved = value;
+      } else if (group.status === AcademyStatus.PENDING) {
+        summary.pending = value;
+      } else if (group.status === AcademyStatus.REJECTED) {
+        summary.rejected = value;
+      }
+    });
+
+    return summary;
   }
 
   private toMembershipEntity(
@@ -499,8 +849,28 @@ export class AcademiesService {
         : undefined,
       academy: record.academy
         ? this.toSummaryEntity(record.academy)
-        : undefined,
+      : undefined,
     });
+  }
+
+  private async requireOwnerAcademy(
+    ownerId: string,
+    options?: { requireApproved?: boolean },
+  ): Promise<Academy> {
+    const academy = await this.prisma.academy.findUnique({ where: { ownerId } });
+    if (!academy) {
+      throw new BadRequestException('Complete your academy onboarding before managing academy resources.');
+    }
+
+    if (options?.requireApproved && academy.status !== AcademyStatus.APPROVED) {
+      throw new ForbiddenException('Your academy must be approved before this action is available.');
+    }
+
+    return academy;
+  }
+
+  async ensureOwnerAcademyApproved(ownerId: string): Promise<Academy> {
+    return this.requireOwnerAcademy(ownerId, { requireApproved: true });
   }
 
   private async generateUniqueSlug(name: string, client: TransactionClient): Promise<string> {
@@ -526,6 +896,29 @@ export class AcademiesService {
       .replace(/-{2,}/g, '-');
 
     return base.length > 0 ? base : `academy-${Date.now()}`;
+  }
+
+  private async buildDefaultAcademyName(ownerId: string): Promise<string> {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+
+    if (owner) {
+      const fullName = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
+      if (fullName) {
+        return `${fullName}'s Academy`;
+      }
+
+      if (owner.email) {
+        const [local] = owner.email.split('@');
+        if (local) {
+          return `${local}'s Academy`;
+        }
+      }
+    }
+
+    return `academy-${Date.now()}`;
   }
 
   private async enforceMembershipLimit(userId: string, role: PrismaRole): Promise<void> {
@@ -557,3 +950,4 @@ export class AcademiesService {
     }
   }
 }
+

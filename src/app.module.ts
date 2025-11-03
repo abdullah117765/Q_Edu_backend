@@ -16,6 +16,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 import { AcademySettingsModule } from './modules/academy-settings/academy-settings.module';
 import { AcademiesModule } from './modules/academies/academies.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AcademiesModule } from './modules/academies/academies.module';
       },
     }),
     PrismaModule,
+    StorageModule,
     MailModule,
     AuthModule,
     UsersModule,
