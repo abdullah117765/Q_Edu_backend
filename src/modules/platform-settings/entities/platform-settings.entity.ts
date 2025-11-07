@@ -48,6 +48,56 @@ export class PlatformSettingsEntity {
   maxAcademiesPerStudent!: number;
 
   @ApiProperty({
+    description: 'Enable host video when meetings start',
+    example: true,
+  })
+  zoomHostVideoEnabled!: boolean;
+
+  @ApiProperty({
+    description: 'Enable participant video when they join',
+    example: false,
+  })
+  zoomParticipantVideoEnabled!: boolean;
+
+  @ApiProperty({
+    description: 'Allow attendees to join before the host',
+    example: false,
+  })
+  zoomJoinBeforeHost!: boolean;
+
+  @ApiProperty({
+    description: 'Mute everyone upon entry',
+    example: true,
+  })
+  zoomMuteUponEntry!: boolean;
+
+  @ApiProperty({
+    description: 'Enable the Zoom waiting room',
+    example: true,
+  })
+  zoomWaitingRoomEnabled!: boolean;
+
+  @ApiProperty({
+    description: 'Default automatic recording behaviour',
+    example: 'cloud',
+    enum: ['local', 'cloud', 'none'],
+  })
+  zoomAutoRecordingMode!: 'local' | 'cloud' | 'none';
+
+  @ApiProperty({
+    description: 'Audio transport permitted for meetings',
+    example: 'both',
+    enum: ['both', 'telephony', 'voip'],
+  })
+  zoomAudioType!: 'both' | 'telephony' | 'voip';
+
+  @ApiProperty({
+    description: 'Enable in-meeting chat for participants',
+    example: false,
+  })
+  zoomChatEnabled!: boolean;
+
+  @ApiProperty({
     description: 'Timestamp of the last settings update',
     example: '2025-01-01T12:00:00.000Z',
   })

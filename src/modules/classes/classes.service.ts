@@ -20,7 +20,10 @@ import {
   ZoomCreditOperation,
 } from '../zoom-credits/dto/create-zoom-credit-transaction.dto';
 import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
-import { ZoomParticipant } from '../zoom/interfaces/zoom.interface';
+import {
+  ZoomMeetingSettings,
+  ZoomParticipant,
+} from '../zoom/interfaces/zoom.interface';
 import { ZoomService } from '../zoom/zoom.service';
 import { CreateClassDto } from './dto/create-class.dto';
 import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
@@ -35,6 +38,7 @@ import {
 } from './entities/class.entity';
 import { ClassParticipantRole } from './entities/class-participant-role.enum';
 import { ClassStatus } from './entities/class-status.enum';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 
 @Injectable()
 export class ClassesService {
@@ -44,6 +48,7 @@ export class ClassesService {
     private readonly prisma: PrismaService,
     private readonly zoomService: ZoomService,
     private readonly zoomCreditsService: ZoomCreditsService,
+    private readonly platformSettingsService: PlatformSettingsService,
   ) {}
 
   async create(
@@ -140,14 +145,23 @@ export class ClassesService {
       );
       const hostIdentifier = teacher.zoomUserId ?? teacher.email;
 
+      const zoomPolicy = await this.buildZoomPolicySnapshot(
+        dto.zoomSettings ?? undefined,
+      );
+
       const zoomMeeting = await this.zoomService.createMeeting(hostIdentifier, {
         topic: dto.title,
         agenda: dto.description,
         start_time: start.toISOString(),
         duration: durationMinutes,
         timezone: dto.timezone,
-        settings: dto.zoomSettings ? { ...dto.zoomSettings } : undefined,
+        settings: zoomPolicy.meetingSettings,
       });
+
+      const metadataPayload = this.mergeMetadata(
+        dto.metadata ?? null,
+        zoomPolicy.metadata,
+      );
 
       const classId = await this.prisma.$transaction(async (tx) => {
         const created = await tx.class.create({
@@ -167,7 +181,9 @@ export class ClassesService {
             zoomStartUrl: zoomMeeting.start_url,
             zoomPassword: zoomMeeting.password,
             zoomUuid: zoomMeeting.uuid,
-            metadata: this.toInputJson(dto.metadata),
+            metadata: metadataPayload
+              ? (metadataPayload as Prisma.InputJsonValue)
+              : undefined,
             status: ClassStatus.UPCOMING,
           },
         });
@@ -436,6 +452,10 @@ export class ClassesService {
       );
     }
 
+    const zoomPolicy = await this.buildZoomPolicySnapshot(
+      dto.zoomSettings ?? undefined,
+    );
+
     if (existing.zoomMeetingId) {
       try {
         await this.zoomService.updateMeeting(existing.zoomMeetingId, {
@@ -444,7 +464,7 @@ export class ClassesService {
           start_time: start.toISOString(),
           duration: durationMinutes,
           timezone: dto.timezone ?? existing.timezone,
-          settings: dto.zoomSettings ? { ...dto.zoomSettings } : undefined,
+          settings: zoomPolicy.meetingSettings,
         });
       } catch (error) {
         this.logger.error(
@@ -453,6 +473,17 @@ export class ClassesService {
         throw error;
       }
     }
+
+    const existingMetadata = this.toPlainMetadata(existing.metadata);
+    const metadataSource =
+      dto.metadata !== undefined ? dto.metadata : existingMetadata;
+    const metadataPayload = this.mergeMetadata(
+      metadataSource,
+      zoomPolicy.metadata,
+    );
+    const metadataInput = metadataPayload
+      ? (metadataPayload as Prisma.InputJsonValue)
+      : undefined;
 
     const updated = await this.prisma.class.update({
       where: { id },
@@ -466,10 +497,7 @@ export class ClassesService {
         timezone: dto.timezone,
         creditsConsumed: dto.creditsConsumed ?? existing.creditsConsumed,
         status: dto.status ?? existing.status,
-        metadata:
-          dto.metadata !== undefined
-            ? this.toInputJson(dto.metadata)
-            : (existing.metadata as Prisma.InputJsonValue),
+        metadata: metadataInput ?? (existing.metadata as Prisma.InputJsonValue),
       },
       select: {
         id: true,
@@ -820,5 +848,58 @@ export class ClassesService {
         `Failed to delete Zoom meeting ${meetingId}: ${(error as Error).message}`,
       );
     }
+  }
+
+  private async buildZoomPolicySnapshot(
+    overrides?: Partial<ZoomMeetingSettings>,
+  ): Promise<{
+    meetingSettings: ZoomMeetingSettings;
+    metadata: Record<string, unknown>;
+  }> {
+    const settings = await this.platformSettingsService.getSettings();
+    const enforced: ZoomMeetingSettings = {
+      host_video: settings.zoomHostVideoEnabled,
+      participant_video: settings.zoomParticipantVideoEnabled,
+      join_before_host: settings.zoomJoinBeforeHost,
+      mute_upon_entry: settings.zoomMuteUponEntry,
+      waiting_room: settings.zoomWaitingRoomEnabled,
+      auto_recording: settings.zoomAutoRecordingMode,
+      audio: settings.zoomAudioType,
+    };
+
+    const meetingSettings: ZoomMeetingSettings = {
+      ...(overrides ?? {}),
+      ...enforced,
+    };
+
+    return {
+      meetingSettings,
+      metadata: {
+        zoomAdminSettings: {
+          hostVideo: settings.zoomHostVideoEnabled,
+          participantVideo: settings.zoomParticipantVideoEnabled,
+          joinBeforeHost: settings.zoomJoinBeforeHost,
+          muteUponEntry: settings.zoomMuteUponEntry,
+          waitingRoom: settings.zoomWaitingRoomEnabled,
+          autoRecordingMode: settings.zoomAutoRecordingMode,
+          audioType: settings.zoomAudioType,
+          chatEnabled: settings.zoomChatEnabled,
+        },
+      },
+    };
+  }
+
+  private mergeMetadata(
+    base: Record<string, unknown> | null | undefined,
+    patch: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> | null {
+    if (!base && !patch) {
+      return null;
+    }
+
+    return {
+      ...(base ?? {}),
+      ...(patch ?? {}),
+    };
   }
 }

@@ -4,6 +4,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
 import { PlatformSettingsEntity } from './entities/platform-settings.entity';
 
+type ZoomRecordingMode = 'local' | 'cloud' | 'none';
+type ZoomAudioType = 'both' | 'telephony' | 'voip';
+
 type PlatformSettingsMap = {
   sessionTimeoutMinutes: number;
   zoomCreditLowThreshold: number;
@@ -12,6 +15,14 @@ type PlatformSettingsMap = {
   supportEmail: string;
   maxAcademiesPerTeacher: number;
   maxAcademiesPerStudent: number;
+  zoomHostVideoEnabled: boolean;
+  zoomParticipantVideoEnabled: boolean;
+  zoomJoinBeforeHost: boolean;
+  zoomMuteUponEntry: boolean;
+  zoomWaitingRoomEnabled: boolean;
+  zoomAutoRecordingMode: ZoomRecordingMode;
+  zoomAudioType: ZoomAudioType;
+  zoomChatEnabled: boolean;
 };
 
 type PlatformSettingRecord = PlatformSetting & {
@@ -30,6 +41,14 @@ const DEFAULT_SETTINGS: PlatformSettingsMap = {
   supportEmail: 'support@qedu.io',
   maxAcademiesPerTeacher: 3,
   maxAcademiesPerStudent: 1,
+  zoomHostVideoEnabled: true,
+  zoomParticipantVideoEnabled: false,
+  zoomJoinBeforeHost: false,
+  zoomMuteUponEntry: true,
+  zoomWaitingRoomEnabled: true,
+  zoomAutoRecordingMode: 'cloud',
+  zoomAudioType: 'both',
+  zoomChatEnabled: false,
 };
 
 @Injectable()

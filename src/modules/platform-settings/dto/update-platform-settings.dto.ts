@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   Max,
@@ -75,4 +76,62 @@ export class UpdatePlatformSettingsDto {
   @Min(0)
   @Max(50)
   maxAcademiesPerStudent?: number;
+
+  @ApiPropertyOptional({
+    description: 'Enable host video when meetings start',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomHostVideoEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Enable participant video when they join',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomParticipantVideoEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Allow participants to join before host',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomJoinBeforeHost?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Mute participants upon entry',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomMuteUponEntry?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Enable waiting room for all meetings',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomWaitingRoomEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Default automatic recording setting',
+    enum: ['local', 'cloud', 'none'],
+  })
+  @IsOptional()
+  @IsIn(['local', 'cloud', 'none'])
+  zoomAutoRecordingMode?: 'local' | 'cloud' | 'none';
+
+  @ApiPropertyOptional({
+    description: 'Default audio option for meetings',
+    enum: ['both', 'telephony', 'voip'],
+  })
+  @IsOptional()
+  @IsIn(['both', 'telephony', 'voip'])
+  zoomAudioType?: 'both' | 'telephony' | 'voip';
+
+  @ApiPropertyOptional({
+    description: 'Allow Zoom in-meeting chat for attendees',
+  })
+  @IsOptional()
+  @IsBoolean()
+  zoomChatEnabled?: boolean;
 }
