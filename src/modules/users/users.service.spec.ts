@@ -118,4 +118,46 @@ describe('UsersService - onboarding', () => {
     expect(result.meta.total).toBe(1);
     expect(result.meta.totalPages).toBe(1);
   });
+
+  describe('findAll directory query', () => {
+    beforeEach(() => {
+      prismaMock.$transaction.mockImplementation(async (queries: any) => {
+        if (typeof queries === 'function') return queries({});
+        return [0, [], [], 0];
+      });
+    });
+
+    it('passes status and search to where clause for super admin', async () => {
+      prismaMock.$transaction.mockResolvedValueOnce([
+        1,
+        [{ ...baseUser, ownedAcademy: null, academyMemberships: [] }],
+        [{ status: UserStatus.PENDING, _count: { _all: 1 } }],
+        0,
+      ]);
+
+      const result = await service.findAll(
+        { page: 1, limit: 25, status: UserStatus.PENDING, search: 'jane' },
+        { id: 'super-1', role: Role.SUPER_ADMIN as any },
+      );
+
+      expect(prismaMock.$transaction).toHaveBeenCalled();
+      expect(result.meta.total).toBe(1);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('returns empty when scoped role has no accessible academies', async () => {
+      academiesServiceMock.getAccessibleAcademyScope.mockResolvedValueOnce({
+        unlimited: false,
+        academyIds: [],
+      });
+
+      const result = await service.findAll(
+        { page: 1, limit: 25 },
+        { id: 'owner-1', role: Role.ACADEMY_OWNER as any },
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+  });
 });
