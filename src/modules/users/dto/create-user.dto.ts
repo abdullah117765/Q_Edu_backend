@@ -1,34 +1,45 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
 import { Role } from '../entities/role.enum';
 import { PHONE_REGEX } from './phone-regex.constant';
+import { NoEmoji } from '../../../common/validators/no-emoji.validator';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'user@example.com' })
+  @ApiProperty({ example: 'user@example.com', maxLength: 254 })
   @IsEmail()
+  @MaxLength(254)
+  @NoEmoji()
   email!: string;
 
-  @ApiProperty({ minLength: 8, example: 'Str0ngP@ssword' })
+  @ApiProperty({ minLength: 8, maxLength: 128, example: 'Str0ngP@ssword' })
   @IsString()
   @MinLength(8)
+  @MaxLength(128)
   password!: string;
 
-  @ApiProperty({ example: 'Jane' })
+  @ApiProperty({ example: 'Jane', maxLength: 80 })
   @IsString()
+  @Length(1, 80)
+  @NoEmoji()
   firstName!: string;
 
-  @ApiPropertyOptional({ example: 'Doe' })
+  @ApiPropertyOptional({ example: 'Doe', maxLength: 80 })
   @IsOptional()
   @IsString()
+  @MaxLength(80)
+  @NoEmoji()
   lastName?: string;
 
   @ApiProperty({
     example: '+1 555 123 4567',
     pattern: PHONE_REGEX.source,
     description: 'Contact number for account verification',
+    maxLength: 32,
   })
   @IsString()
+  @MaxLength(32)
   @Matches(PHONE_REGEX, { message: 'phoneNumber must contain only digits, spaces, and valid symbols' })
+  @NoEmoji()
   phoneNumber!: string;
 
   @ApiPropertyOptional({ enum: Role, description: 'Role assigned to the user' })

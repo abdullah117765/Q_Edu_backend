@@ -1,35 +1,43 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
+import { NoEmoji } from '../../../common/validators/no-emoji.validator';
 
 export class UpdateProfileDto {
-  @ApiPropertyOptional({ example: 'Taylor' })
+  @ApiPropertyOptional({ example: 'Taylor', maxLength: 80 })
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(80)
+  @NoEmoji()
   firstName?: string;
 
-  @ApiPropertyOptional({ example: 'Rivera' })
+  @ApiPropertyOptional({ example: 'Rivera', maxLength: 80 })
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(80)
+  @NoEmoji()
   lastName?: string;
 
-  @ApiPropertyOptional({ example: '+1 555 0100 200' })
+  @ApiPropertyOptional({ example: '+1 555 0100 200', maxLength: 32 })
   @IsOptional()
   @IsString()
   @MaxLength(32)
+  @NoEmoji()
   phoneNumber?: string;
 
-  @ApiPropertyOptional({ example: 'Non-binary unicorn' })
+  @ApiPropertyOptional({ example: 'Non-binary', maxLength: 64 })
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(64)
+  @NoEmoji()
   gender?: string;
 
-  @ApiPropertyOptional({ example: 'Passionate educator who loves gamified learning.' })
+  @ApiPropertyOptional({
+    example: 'Passionate educator who loves gamified learning.',
+    maxLength: 500,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(500)
   bio?: string;
 
   @ApiPropertyOptional({ example: '2001-05-25' })
