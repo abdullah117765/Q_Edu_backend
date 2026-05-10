@@ -28,12 +28,20 @@ describe('ZoomCreditsService', () => {
     },
   };
 
+  const paymentsServiceMock = {
+    refund: jest.fn(),
+    chargeForCredits: jest.fn(),
+  };
+
   let service: ZoomCreditsService;
 
   beforeEach(() => {
     jest.resetAllMocks();
     prismaMock.$transaction.mockImplementation(async (callback: any) => callback(txMock));
-    service = new ZoomCreditsService(prismaMock as unknown as any);
+    service = new ZoomCreditsService(
+      prismaMock as unknown as any,
+      paymentsServiceMock as unknown as any,
+    );
   });
 
   it('credits balance when operation is credit', async () => {

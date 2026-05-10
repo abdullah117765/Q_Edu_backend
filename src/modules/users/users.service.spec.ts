@@ -16,8 +16,19 @@ describe('UsersService - onboarding', () => {
       findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn(),
+  };
+
+  const academiesServiceMock = {
+    ensureAcademyForOwner: jest.fn(),
+    getAccessibleAcademyScope: jest.fn().mockResolvedValue({ unlimited: true, academyIds: [] }),
+  };
+
+  const storageMock = {
+    saveFile: jest.fn(),
+    deleteFile: jest.fn(),
   };
 
   let service: UsersService;
@@ -25,7 +36,13 @@ describe('UsersService - onboarding', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.$transaction.mockImplementation(async (queries: Promise<unknown>[]) => Promise.all(queries));
-    service = new UsersService(prismaMock as unknown as any);
+    prismaMock.user.count.mockResolvedValue(0);
+    prismaMock.user.groupBy.mockResolvedValue([]);
+    service = new UsersService(
+      prismaMock as unknown as any,
+      academiesServiceMock as unknown as any,
+      storageMock as unknown as any,
+    );
   });
 
   const baseUser = {

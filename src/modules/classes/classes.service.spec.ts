@@ -1,10 +1,15 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Role as PrismaRole } from '@prisma/client';
 import { ClassesService } from './classes.service';
 import { ClassStatus } from './entities/class-status.enum';
 
 describe('ClassesService', () => {
   const prismaMock = {
     user: { findUnique: jest.fn() },
+    academy: { findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-1' }) },
+    academyMembership: {
+      findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED', role: 'TEACHER' }),
+    },
     class: {
       create: jest.fn(),
       findUnique: jest.fn(),
@@ -29,6 +34,11 @@ describe('ClassesService', () => {
     adjustCredits: jest.fn(),
   };
 
+  const platformSettingsServiceMock = {
+    isZoomEnabled: jest.fn().mockResolvedValue(true),
+    getSettings: jest.fn().mockResolvedValue({ zoomEnabled: true }),
+  };
+
   let service: ClassesService;
 
   beforeEach(() => {
@@ -37,6 +47,7 @@ describe('ClassesService', () => {
       prismaMock as unknown as any,
       zoomServiceMock as unknown as any,
       zoomCreditsServiceMock as unknown as any,
+      platformSettingsServiceMock as unknown as any,
     );
   });
 
@@ -49,6 +60,7 @@ describe('ClassesService', () => {
           title: 'Test',
           description: undefined,
           teacherId: 'teacher-1',
+          academyId: 'academy-1',
           scheduledStart: new Date().toISOString(),
           scheduledEnd: new Date(Date.now() + 3600000).toISOString(),
           timezone: 'UTC',
@@ -65,6 +77,7 @@ describe('ClassesService', () => {
           title: 'Test',
           description: undefined,
           teacherId: 'teacher-1',
+          academyId: 'academy-1',
           scheduledStart: new Date().toISOString(),
           scheduledEnd: new Date(Date.now() - 3600000).toISOString(),
           timezone: 'UTC',
@@ -78,6 +91,7 @@ describe('ClassesService', () => {
       id: 'class-1',
       title: 'Existing class',
       description: null,
+      academyId: 'academy-1',
       teacherId: 'teacher-1',
       scheduledStart: new Date(),
       scheduledEnd: new Date(Date.now() + 3600000),
@@ -109,6 +123,12 @@ describe('ClassesService', () => {
 
       zoomServiceMock.updateMeeting.mockResolvedValue(undefined);
 
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: 'teacher-1',
+        role: PrismaRole.TEACHER,
+        status: 'APPROVED',
+      });
+
       prismaMock.class.update.mockResolvedValue({
         id: baseClass.id,
         title: baseClass.title,
@@ -130,6 +150,7 @@ describe('ClassesService', () => {
           scheduledEnd: new Date(baseClass.scheduledEnd.getTime() + 60000).toISOString(),
         },
         'actor-1',
+        PrismaRole.SUPER_ADMIN,
       );
 
       expect(zoomCreditsServiceMock.adjustCredits).toHaveBeenCalledWith(
