@@ -62,14 +62,22 @@ export class ContactMessagesService {
     };
   }
 
-  async updateStatus(id: string, dto: UpdateContactMessageStatusDto, actorId: string) {
-    const existing = await this.prisma.contactMessage.findUnique({ where: { id } });
+  async updateStatus(
+    id: string,
+    dto: UpdateContactMessageStatusDto,
+    actorId: string,
+  ) {
+    const existing = await this.prisma.contactMessage.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Contact message not found.');
     }
 
     const currentMeta =
-      existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+      existing.metadata &&
+      typeof existing.metadata === 'object' &&
+      !Array.isArray(existing.metadata)
         ? (existing.metadata as Record<string, unknown>)
         : {};
 
@@ -91,6 +99,10 @@ export class ContactMessagesService {
   }
 
   markReviewed(id: string, actorId: string) {
-    return this.updateStatus(id, { status: ContactMessageStatus.IN_REVIEW }, actorId);
+    return this.updateStatus(
+      id,
+      { status: ContactMessageStatus.IN_REVIEW },
+      actorId,
+    );
   }
 }

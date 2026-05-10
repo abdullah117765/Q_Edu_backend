@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MaxLength,
+} from 'class-validator';
 
 export class CreateContactMessageDto {
   @ApiProperty({ description: 'Sender full name' })
@@ -24,7 +30,9 @@ export class CreateContactMessageDto {
   @MaxLength(5000)
   message!: string;
 
-  @ApiPropertyOptional({ description: 'Origin URL where this form was submitted' })
+  @ApiPropertyOptional({
+    description: 'Origin URL where this form was submitted',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1024)

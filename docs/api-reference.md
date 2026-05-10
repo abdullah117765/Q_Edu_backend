@@ -30,22 +30,22 @@ All non-auth endpoints require `Authorization: Bearer <accessToken>` (or the aut
 
 ## Users — `/users`
 
-| Method | Path          | Roles                                        | Description                                                                          |
-| ------ | ------------- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| GET    | `/`           | SUPER_ADMIN, ACADEMY_OWNER                   | Directory; excludes `SUPER_ADMIN` rows and supports `?status=&search=&role=&academyId=&ownerId=`. |
-| GET    | `/admins`     | SUPER_ADMIN                                  | Lists academy owners with summary counts.                                            |
-| GET    | `/teachers`   | SUPER_ADMIN, ACADEMY_OWNER, TEACHER, STUDENT | List teachers (students only see APPROVED).                                          |
-| GET    | `/students`   | SUPER_ADMIN, ACADEMY_OWNER, TEACHER          | List students (teachers see masked emails).                                          |
-| GET    | `/me`         | any                                          | Current user profile.                                                                |
-| PATCH  | `/me`         | any                                          | Update profile fields.                                                               |
-| PATCH  | `/me/photo`   | any                                          | Multipart upload (≤5 MB, png/jpg/gif/webp).                                          |
-| GET    | `/:id`        | any (scoped)                                 | Fetch single user. Non-elevated roles can only fetch self or shared-academy members. |
-| PATCH  | `/:id`        | SUPER_ADMIN, ACADEMY_OWNER                   | Update user.                                                                         |
+| Method | Path          | Roles                                        | Description                                                                                        |
+| ------ | ------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET    | `/`           | SUPER_ADMIN, ACADEMY_OWNER                   | Directory; excludes `SUPER_ADMIN` rows and supports `?status=&search=&role=&academyId=&ownerId=`.  |
+| GET    | `/admins`     | SUPER_ADMIN                                  | Lists academy owners with summary counts.                                                          |
+| GET    | `/teachers`   | SUPER_ADMIN, ACADEMY_OWNER, TEACHER, STUDENT | List teachers (students only see APPROVED).                                                        |
+| GET    | `/students`   | SUPER_ADMIN, ACADEMY_OWNER, TEACHER          | List students (teachers see masked emails).                                                        |
+| GET    | `/me`         | any                                          | Current user profile.                                                                              |
+| PATCH  | `/me`         | any                                          | Update profile fields.                                                                             |
+| PATCH  | `/me/photo`   | any                                          | Multipart upload (≤5 MB, png/jpg/gif/webp).                                                        |
+| GET    | `/:id`        | any (scoped)                                 | Fetch single user. Non-elevated roles can only fetch self or shared-academy members.               |
+| PATCH  | `/:id`        | SUPER_ADMIN, ACADEMY_OWNER                   | Update user.                                                                                       |
 | PATCH  | `/:id/status` | SUPER_ADMIN, ACADEMY_OWNER                   | Approve/Reject (rejection requires `rejectionReason`). Owners are scoped to their academy members. |
-| DELETE | `/:id`        | SUPER_ADMIN                                  | Hard delete.                                                                         |
-| POST   | `/admins`     | SUPER_ADMIN                                  | Create academy owner.                                                                |
-| POST   | `/teachers`   | SUPER_ADMIN, ACADEMY_OWNER                   | Create teacher.                                                                      |
-| POST   | `/students`   | SUPER_ADMIN, ACADEMY_OWNER                   | Create student.                                                                      |
+| DELETE | `/:id`        | SUPER_ADMIN                                  | Hard delete.                                                                                       |
+| POST   | `/admins`     | SUPER_ADMIN                                  | Create academy owner.                                                                              |
+| POST   | `/teachers`   | SUPER_ADMIN, ACADEMY_OWNER                   | Create teacher.                                                                                    |
+| POST   | `/students`   | SUPER_ADMIN, ACADEMY_OWNER                   | Create student.                                                                                    |
 
 ## Academies — `/academies`
 
@@ -83,12 +83,12 @@ All non-auth endpoints require `Authorization: Bearer <accessToken>` (or the aut
 
 ## Contact messages — `/contact-messages`
 
-| Method | Path               | Roles       | Description |
-| ------ | ------------------ | ----------- | ----------- |
-| POST   | `/`                | public      | Submit a contact message from the website contact form. |
-| GET    | `/admin`           | SUPER_ADMIN | List contact inbox (`status`, `search`, pagination). |
-| PATCH  | `/admin/:id/status`| SUPER_ADMIN | Update triage status (`NEW`, `IN_REVIEW`, `RESOLVED`, `SPAM`). |
-| PATCH  | `/admin/:id/read`  | SUPER_ADMIN | Quick action to mark as `IN_REVIEW`. |
+| Method | Path                | Roles       | Description                                                    |
+| ------ | ------------------- | ----------- | -------------------------------------------------------------- |
+| POST   | `/`                 | public      | Submit a contact message from the website contact form.        |
+| GET    | `/admin`            | SUPER_ADMIN | List contact inbox (`status`, `search`, pagination).           |
+| PATCH  | `/admin/:id/status` | SUPER_ADMIN | Update triage status (`NEW`, `IN_REVIEW`, `RESOLVED`, `SPAM`). |
+| PATCH  | `/admin/:id/read`   | SUPER_ADMIN | Quick action to mark as `IN_REVIEW`.                           |
 
 ## Resources — `/resources`
 

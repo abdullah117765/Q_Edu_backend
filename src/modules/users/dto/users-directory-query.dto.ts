@@ -7,7 +7,8 @@ import { UserStatus } from '../entities/user-status.enum';
 export class UsersDirectoryQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     enum: Role,
-    description: 'Filter users by role (SUPER_ADMIN is intentionally excluded from directory results)',
+    description:
+      'Filter users by role (SUPER_ADMIN is intentionally excluded from directory results)',
   })
   @IsOptional()
   @IsEnum(Role)

@@ -314,8 +314,10 @@ model ClassParticipant {
 model ZoomCreditBalance {
   userId    String   @id
   balance   Int      @default(0)
+  teacherLimit Int?
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  limitHistory TeacherCreditLimitHistory[]
 }
 
 model ZoomCreditTransaction {
@@ -351,6 +353,22 @@ model ZoomCreditAuditLog {
 
   @@index([transactionId])
   @@index([actorId])
+}
+
+model TeacherCreditLimitHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  academyId String
+  oldLimit  Int?
+  newLimit  Int?
+  changedBy String
+  reason    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  balance   ZoomCreditBalance @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([academyId])
 }
 
 model Resource {

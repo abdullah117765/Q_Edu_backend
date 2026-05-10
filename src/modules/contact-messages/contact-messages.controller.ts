@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    Patch,
+    Post,
+    Query,
+    Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
@@ -46,7 +55,10 @@ export class ContactMessagesController {
   @ApiBearerAuth()
   @Auth(Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Mark contact message as in review' })
-  async markRead(@Param('id') id: string, @Req() request: Request): Promise<MessageResponseDto> {
+  async markRead(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<MessageResponseDto> {
     const actor = request['user'] as UserEntity;
     await this.contactMessages.markReviewed(id, actor.id);
     return { message: 'Contact message marked as in review.' };

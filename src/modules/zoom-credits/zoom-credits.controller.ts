@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    Patch,
+    Post,
+    Query,
+    Req,
+} from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiOperation,
@@ -17,7 +26,9 @@ import { ZoomCreditTransactionsQueryDto } from './dto/zoom-credit-transactions-q
 import { ZoomCreditSummaryEntity } from './entities/zoom-credit-summary.entity';
 import { ZoomCreditTransactionEntity } from './entities/zoom-credit-transaction.entity';
 import { ZoomCreditsService } from './zoom-credits.service';
-type RequestWithUser = Request & { user?: { id?: string } };
+type RequestWithUser = Request & {
+  user?: { id?: string; role?: string; academyId?: string };
+};
 
 @ApiTags('zoom-credits')
 @ApiBearerAuth()
@@ -95,6 +106,76 @@ export class ZoomCreditsController {
     return this.zoomCreditsService.getUsageTrend(
       userId,
       days ? Number(days) : 30,
+    );
+  }
+
+  @Get('academy/:academyId/teachers-summary')
+  @Auth(Role.ACADEMY_OWNER)
+  @ApiOperation({
+    summary: 'Get credit summary for all teachers in an academy',
+  })
+  @ApiParam({ name: 'academyId', description: 'Academy identifier' })
+  async getAcademyTeachersCreditSummary(
+    @Param('academyId') academyId: string,
+    @Req() request: Request,
+  ) {
+    const ownerId = (request as RequestWithUser).user?.id as string;
+    return this.zoomCreditsService.getAcademyTeachersCreditSummary(
+      academyId,
+      ownerId,
+    );
+  }
+
+  @Patch('teacher/:teacherId/limit')
+  @Auth(Role.ACADEMY_OWNER)
+  @ApiOperation({
+    summary: 'Set or update credit limit for a teacher',
+  })
+  @ApiParam({ name: 'teacherId', description: 'Teacher user identifier' })
+  async setTeacherCreditLimit(
+    @Param('teacherId') teacherId: string,
+    @Body() dto: { academyId: string; limit: number | null; reason?: string },
+    @Req() request: Request,
+  ) {
+    const actorId = (request as RequestWithUser).user?.id as string;
+    await this.zoomCreditsService.setTeacherCreditLimit(
+      teacherId,
+      dto.academyId,
+      dto.limit,
+      actorId,
+      dto.reason,
+    );
+    return { success: true, message: 'Credit limit updated successfully' };
+  }
+
+  @Get('teacher/:teacherId/audit-log')
+  @Auth(Role.ACADEMY_OWNER, Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get transaction and limit change audit log for a teacher',
+  })
+  @ApiParam({ name: 'teacherId', description: 'Teacher user identifier' })
+  async getTeacherCreditAuditLog(
+    @Param('teacherId') teacherId: string,
+    @Query('academyId') academyId: string,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Req() request?: Request,
+  ) {
+    const ownerId = (request as RequestWithUser).user?.id as string;
+    return this.zoomCreditsService.getTeacherCreditAuditLog(
+      teacherId,
+      academyId,
+      ownerId,
+      take ? Number(take) : 50,
+      skip ? Number(skip) : 0,
+      {
+        type,
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+      },
     );
   }
 }

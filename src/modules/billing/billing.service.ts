@@ -377,7 +377,8 @@ export class BillingService {
   }) {
     const interval = opts.interval ?? 'day';
     const now = new Date();
-    const from = opts.from ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const from =
+      opts.from ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const to = opts.to ?? now;
 
     const where: Prisma.PaymentWhereInput = {
@@ -386,67 +387,75 @@ export class BillingService {
       ...(opts.provider ? { provider: opts.provider } : {}),
     };
 
-    const [agg, byProvider, byPackage, byPlan, recent, activeSubs, mrrAgg, timeSeriesRows] =
-      await Promise.all([
-        this.prisma.payment.aggregate({
-          where,
-          _sum: { amount: true, platformFeeAmount: true, netAmount: true },
-          _count: { _all: true },
-        }),
-        this.prisma.payment.groupBy({
-          where,
-          by: ['provider'],
-          _sum: { amount: true, platformFeeAmount: true },
-          _count: { _all: true },
-        }),
-        this.prisma.payment.groupBy({
-          where: { ...where, packageId: { not: null } },
-          by: ['packageId'],
-          _sum: { amount: true, platformFeeAmount: true },
-          _count: { _all: true },
-        }),
-        this.prisma.payment.groupBy({
-          where: { ...where, subscriptionId: { not: null } },
-          by: ['subscriptionId'],
-          _sum: { amount: true, platformFeeAmount: true },
-          _count: { _all: true },
-        }),
-        this.prisma.payment.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-          take: 25,
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
+    const [
+      agg,
+      byProvider,
+      byPackage,
+      byPlan,
+      recent,
+      activeSubs,
+      mrrAgg,
+      timeSeriesRows,
+    ] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where,
+        _sum: { amount: true, platformFeeAmount: true, netAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.payment.groupBy({
+        where,
+        by: ['provider'],
+        _sum: { amount: true, platformFeeAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.payment.groupBy({
+        where: { ...where, packageId: { not: null } },
+        by: ['packageId'],
+        _sum: { amount: true, platformFeeAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.payment.groupBy({
+        where: { ...where, subscriptionId: { not: null } },
+        by: ['subscriptionId'],
+        _sum: { amount: true, platformFeeAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.payment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
             },
-            package: { select: { id: true, name: true, credits: true } },
-            subscription: { select: { id: true, planId: true } },
           },
-        }),
-        this.prisma.subscription.count({
-          where: { status: SubscriptionStatus.ACTIVE },
-        }),
-        this.prisma.subscription.findMany({
-          where: { status: SubscriptionStatus.ACTIVE },
-          include: { plan: true },
-        }),
-        this.prisma.payment.findMany({
-          where,
-          select: {
-            createdAt: true,
-            amount: true,
-            platformFeeAmount: true,
-            netAmount: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        }),
-      ]);
+          package: { select: { id: true, name: true, credits: true } },
+          subscription: { select: { id: true, planId: true } },
+        },
+      }),
+      this.prisma.subscription.count({
+        where: { status: SubscriptionStatus.ACTIVE },
+      }),
+      this.prisma.subscription.findMany({
+        where: { status: SubscriptionStatus.ACTIVE },
+        include: { plan: true },
+      }),
+      this.prisma.payment.findMany({
+        where,
+        select: {
+          createdAt: true,
+          amount: true,
+          platformFeeAmount: true,
+          netAmount: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
 
     const monthlyRecurringCents = mrrAgg.reduce((acc, sub) => {
       const cents = sub.plan.priceCents;
@@ -1090,7 +1099,13 @@ export class BillingService {
   ) {
     const buckets = new Map<
       string,
-      { label: string; gross: number; platformFee: number; net: number; count: number }
+      {
+        label: string;
+        gross: number;
+        platformFee: number;
+        net: number;
+        count: number;
+      }
     >();
 
     const cursor = new Date(from);
@@ -1135,7 +1150,9 @@ export class BillingService {
       return `${year}-${month}`;
     }
 
-    const weekStart = new Date(Date.UTC(year, date.getUTCMonth(), date.getUTCDate()));
+    const weekStart = new Date(
+      Date.UTC(year, date.getUTCMonth(), date.getUTCDate()),
+    );
     const dayOfWeek = weekStart.getUTCDay();
     const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     weekStart.setUTCDate(weekStart.getUTCDate() - offset);

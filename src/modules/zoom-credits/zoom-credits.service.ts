@@ -1,5 +1,13 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
+import {
+    AcademyMemberRole,
+    AcademyMembershipStatus,
     Prisma,
     ZoomCreditAuditAction,
     ZoomCreditTransaction,
@@ -407,5 +415,306 @@ export class ZoomCreditsService {
         net: v.credited - v.debited,
       })),
     };
+  }
+
+  async getAcademyTeachersCreditSummary(
+    academyId: string,
+    ownerId: string,
+  ): Promise<
+    Array<{
+      teacherId: string;
+      teacherName: string;
+      email: string;
+      balance: number;
+      totalCredited: number;
+      totalDebited: number;
+      creditLimit: number | null;
+      totalPurchased: number;
+    }>
+  > {
+    await this.assertAcademyOwner(academyId, ownerId);
+
+    const teachers = await this.prisma.academyMembership.findMany({
+      where: {
+        academyId,
+        role: AcademyMemberRole.TEACHER,
+        status: AcademyMembershipStatus.APPROVED,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            zoomCreditBalance: true,
+          },
+        },
+      },
+    });
+
+    const result: Array<{
+      teacherId: string;
+      teacherName: string;
+      email: string;
+      balance: number;
+      totalCredited: number;
+      totalDebited: number;
+      creditLimit: number | null;
+      totalPurchased: number;
+    }> = [];
+    for (const membership of teachers) {
+      const user = membership.user;
+      const balance = user.zoomCreditBalance?.balance ?? 0;
+      const creditLimit = user.zoomCreditBalance?.teacherLimit ?? null;
+
+      const aggregates = await this.prisma.zoomCreditTransaction.groupBy({
+        by: ['type'],
+        where: { userId: user.id },
+        _sum: { amount: true },
+      });
+
+      const totalCredited = aggregates
+        .filter(
+          (item) =>
+            item.type === ZoomCreditTransactionType.CREDIT ||
+            item.type === ZoomCreditTransactionType.TRANSFER_IN,
+        )
+        .reduce((acc, item) => acc + (item._sum?.amount ?? 0), 0);
+
+      const totalDebited = aggregates
+        .filter(
+          (item) =>
+            item.type === ZoomCreditTransactionType.DEBIT ||
+            item.type === ZoomCreditTransactionType.TRANSFER_OUT,
+        )
+        .reduce((acc, item) => acc + (item._sum?.amount ?? 0), 0);
+
+      result.push({
+        teacherId: user.id,
+        teacherName: `${user.firstName} ${user.lastName || ''}`.trim(),
+        email: user.email,
+        balance,
+        totalCredited,
+        totalDebited,
+        creditLimit,
+        totalPurchased: totalCredited,
+      });
+    }
+
+    return result;
+  }
+
+  async setTeacherCreditLimit(
+    teacherId: string,
+    academyId: string,
+    newLimit: number | null,
+    changedBy: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.assertAcademyOwner(academyId, changedBy);
+    await this.assertTeacherBelongsToAcademy(teacherId, academyId);
+
+    const oldBalance = await this.ensureBalanceSimple(teacherId);
+    const oldLimit = oldBalance.teacherLimit;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.zoomCreditBalance.update({
+        where: { userId: teacherId },
+        data: { teacherLimit: newLimit },
+      });
+
+      await tx.teacherCreditLimitHistory.create({
+        data: {
+          userId: teacherId,
+          academyId,
+          oldLimit,
+          newLimit,
+          changedBy,
+          reason: reason ?? null,
+          metadata: this.toInputJson({
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      });
+    });
+
+    this.logger.log(
+      `Updated teacher ${teacherId} credit limit from ${oldLimit} to ${newLimit}`,
+    );
+  }
+
+  async getTeacherCreditAuditLog(
+    teacherId: string,
+    academyId: string,
+    ownerId: string,
+    take = 50,
+    skip = 0,
+    filters?: {
+      type?: string;
+      from?: Date;
+      to?: Date;
+    },
+  ): Promise<{
+    transactions: Array<{
+      id: string;
+      type: string;
+      amount: number;
+      runningBalance: number;
+      reason: string | null;
+      createdAt: Date;
+    }>;
+    limitChanges: Array<{
+      id: string;
+      oldLimit: number | null;
+      newLimit: number | null;
+      changedBy: string;
+      reason: string | null;
+      createdAt: Date;
+    }>;
+    meta: {
+      total: number;
+      count: number;
+      take: number;
+      skip: number;
+      nextSkip: number | null;
+      previousSkip: number | null;
+    };
+  }> {
+    await this.assertAcademyOwner(academyId, ownerId);
+    await this.assertTeacherBelongsToAcademy(teacherId, academyId);
+
+    const safeTake = Math.min(Math.max(Math.floor(take || 50), 1), 100);
+    const safeSkip = Math.max(Math.floor(skip || 0), 0);
+    const whereDate = {
+      ...(filters?.from ? { gte: filters.from } : {}),
+      ...(filters?.to ? { lte: filters.to } : {}),
+    };
+
+    const txWhere: Prisma.ZoomCreditTransactionWhereInput = {
+      userId: teacherId,
+      ...(filters?.type
+        ? {
+            type: filters.type as ZoomCreditTransactionType,
+          }
+        : {}),
+      ...(filters?.from || filters?.to
+        ? {
+            createdAt: whereDate,
+          }
+        : {}),
+    };
+
+    const limitWhere: Prisma.TeacherCreditLimitHistoryWhereInput = {
+      userId: teacherId,
+      ...(filters?.from || filters?.to
+        ? {
+            createdAt: whereDate,
+          }
+        : {}),
+    };
+
+    const [transactions, limitChanges, total] = await this.prisma.$transaction([
+      this.prisma.zoomCreditTransaction.findMany({
+        where: txWhere,
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          runningBalance: true,
+          reason: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: safeTake,
+        skip: safeSkip,
+      }),
+      this.prisma.teacherCreditLimitHistory.findMany({
+        where: limitWhere,
+        select: {
+          id: true,
+          oldLimit: true,
+          newLimit: true,
+          changedBy: true,
+          reason: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.max(Math.floor(safeTake / 2), 10),
+      }),
+      this.prisma.zoomCreditTransaction.count({
+        where: txWhere,
+      }),
+    ]);
+
+    return {
+      transactions: transactions.map((t) => ({
+        ...t,
+        type: t.type.toString(),
+      })),
+      limitChanges,
+      meta: {
+        total,
+        count: transactions.length,
+        take: safeTake,
+        skip: safeSkip,
+        nextSkip:
+          safeSkip + transactions.length < total ? safeSkip + safeTake : null,
+        previousSkip: safeSkip > 0 ? Math.max(safeSkip - safeTake, 0) : null,
+      },
+    };
+  }
+
+  private async ensureBalanceSimple(userId: string) {
+    return this.prisma.zoomCreditBalance.upsert({
+      where: { userId },
+      update: {},
+      create: { userId, balance: 0 },
+    });
+  }
+
+  private async assertAcademyOwner(
+    academyId: string,
+    ownerId: string,
+  ): Promise<void> {
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: academyId },
+      select: { ownerId: true },
+    });
+
+    if (!academy) {
+      throw new NotFoundException('Academy not found.');
+    }
+
+    if (academy.ownerId !== ownerId) {
+      throw new ForbiddenException(
+        'You are not authorized to manage credits for this academy.',
+      );
+    }
+  }
+
+  private async assertTeacherBelongsToAcademy(
+    teacherId: string,
+    academyId: string,
+  ): Promise<void> {
+    const membership = await this.prisma.academyMembership.findUnique({
+      where: {
+        academyId_userId: {
+          academyId,
+          userId: teacherId,
+        },
+      },
+      select: { role: true, status: true },
+    });
+
+    if (
+      !membership ||
+      membership.role !== AcademyMemberRole.TEACHER ||
+      membership.status !== AcademyMembershipStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'The selected teacher is not an approved member of this academy.',
+      );
+    }
   }
 }

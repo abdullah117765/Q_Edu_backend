@@ -19,7 +19,9 @@ describe('BillingService', () => {
   } as any;
 
   const stripeMock = {
-    getConfig: jest.fn().mockReturnValue({ platformFeePercent: 10, currency: 'usd' }),
+    getConfig: jest
+      .fn()
+      .mockReturnValue({ platformFeePercent: 10, currency: 'usd' }),
   } as any;
 
   const couponsMock = {} as any;
@@ -29,11 +31,18 @@ describe('BillingService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new BillingService(prismaMock, stripeMock, couponsMock, notificationsMock);
+    service = new BillingService(
+      prismaMock,
+      stripeMock,
+      couponsMock,
+      notificationsMock,
+    );
   });
 
   it('short-circuits duplicate webhook events (idempotency)', async () => {
-    prismaMock.stripeWebhookEvent.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.stripeWebhookEvent.create.mockRejectedValueOnce({
+      code: 'P2002',
+    });
 
     await expect(
       service.handleStripeEvent({
@@ -45,7 +54,10 @@ describe('BillingService', () => {
 
     expect(prismaMock.stripeWebhookEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ id: 'evt_duplicate', type: 'invoice.payment_succeeded' }),
+        data: expect.objectContaining({
+          id: 'evt_duplicate',
+          type: 'invoice.payment_succeeded',
+        }),
       }),
     );
     expect(prismaMock.stripeWebhookEvent.update).not.toHaveBeenCalled();
@@ -57,9 +69,27 @@ describe('BillingService', () => {
       _count: { _all: 4 },
     });
     prismaMock.payment.groupBy
-      .mockResolvedValueOnce([{ provider: 'stripe', _sum: { amount: 1200, platformFeeAmount: 120 }, _count: { _all: 4 } }])
-      .mockResolvedValueOnce([{ packageId: 'pkg_1', _sum: { amount: 800, platformFeeAmount: 80 }, _count: { _all: 2 } }])
-      .mockResolvedValueOnce([{ subscriptionId: 'sub_1', _sum: { amount: 400, platformFeeAmount: 40 }, _count: { _all: 2 } }]);
+      .mockResolvedValueOnce([
+        {
+          provider: 'stripe',
+          _sum: { amount: 1200, platformFeeAmount: 120 },
+          _count: { _all: 4 },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          packageId: 'pkg_1',
+          _sum: { amount: 800, platformFeeAmount: 80 },
+          _count: { _all: 2 },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          subscriptionId: 'sub_1',
+          _sum: { amount: 400, platformFeeAmount: 40 },
+          _count: { _all: 2 },
+        },
+      ]);
     prismaMock.payment.findMany
       .mockResolvedValueOnce([{ id: 'pay_1' }])
       .mockResolvedValueOnce([
@@ -100,17 +130,37 @@ describe('BillingService', () => {
     expect(result.byPlan).toHaveLength(1);
     expect(result.timeSeries.length).toBeGreaterThan(0);
     expect(result.timeSeries[0]).toEqual(
-      expect.objectContaining({ label: expect.any(String), gross: expect.any(Number), platformFee: expect.any(Number), net: expect.any(Number), count: expect.any(Number) }),
+      expect.objectContaining({
+        label: expect.any(String),
+        gross: expect.any(Number),
+        platformFee: expect.any(Number),
+        net: expect.any(Number),
+        count: expect.any(Number),
+      }),
     );
   });
 
   it('maps Stripe subscription statuses to internal enums', () => {
-    expect((service as any).mapSubStatus('active')).toBe(SubscriptionStatus.ACTIVE);
-    expect((service as any).mapSubStatus('trialing')).toBe(SubscriptionStatus.TRIALING);
-    expect((service as any).mapSubStatus('past_due')).toBe(SubscriptionStatus.PAST_DUE);
-    expect((service as any).mapSubStatus('canceled')).toBe(SubscriptionStatus.CANCELED);
-    expect((service as any).mapSubStatus('incomplete')).toBe(SubscriptionStatus.INCOMPLETE);
-    expect((service as any).mapSubStatus('incomplete_expired')).toBe(SubscriptionStatus.INCOMPLETE_EXPIRED);
-    expect((service as any).mapSubStatus('unpaid')).toBe(SubscriptionStatus.UNPAID);
+    expect((service as any).mapSubStatus('active')).toBe(
+      SubscriptionStatus.ACTIVE,
+    );
+    expect((service as any).mapSubStatus('trialing')).toBe(
+      SubscriptionStatus.TRIALING,
+    );
+    expect((service as any).mapSubStatus('past_due')).toBe(
+      SubscriptionStatus.PAST_DUE,
+    );
+    expect((service as any).mapSubStatus('canceled')).toBe(
+      SubscriptionStatus.CANCELED,
+    );
+    expect((service as any).mapSubStatus('incomplete')).toBe(
+      SubscriptionStatus.INCOMPLETE,
+    );
+    expect((service as any).mapSubStatus('incomplete_expired')).toBe(
+      SubscriptionStatus.INCOMPLETE_EXPIRED,
+    );
+    expect((service as any).mapSubStatus('unpaid')).toBe(
+      SubscriptionStatus.UNPAID,
+    );
   });
 });

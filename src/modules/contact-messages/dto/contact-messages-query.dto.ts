@@ -9,7 +9,9 @@ export class ContactMessagesQueryDto extends PaginationQueryDto {
   @IsEnum(ContactMessageStatus)
   status?: ContactMessageStatus;
 
-  @ApiPropertyOptional({ description: 'Search by sender name, email, subject, or body' })
+  @ApiPropertyOptional({
+    description: 'Search by sender name, email, subject, or body',
+  })
   @IsOptional()
   @IsString()
   search?: string;
