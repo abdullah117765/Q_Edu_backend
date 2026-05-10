@@ -2,24 +2,25 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import configuration from './config/configuration';
-import { validationSchema } from './config/validation';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { SuperAdminBootstrap } from './bootstrap/super-admin.bootstrap';
+import configuration from './config/configuration';
+import { validationSchema } from './config/validation';
+import { AcademiesModule } from './modules/academies/academies.module';
+import { AcademySettingsModule } from './modules/academy-settings/academy-settings.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { ClassesModule } from './modules/classes/classes.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { MailModule } from './modules/mail/mail.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
+import { ResourcesModule } from './modules/resources/resources.module';
+import { StripeModule } from './modules/stripe/stripe.module';
 import { UsersModule } from './modules/users/users.module';
 import { ZoomCreditsModule } from './modules/zoom-credits/zoom-credits.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { DashboardModule } from './modules/dashboard/dashboard.module';
-import { ResourcesModule } from './modules/resources/resources.module';
-import { PaymentsModule } from './modules/payments/payments.module';
-import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
-import { AcademySettingsModule } from './modules/academy-settings/academy-settings.module';
-import { AcademiesModule } from './modules/academies/academies.module';
-import { StripeModule } from './modules/stripe/stripe.module';
-import { BillingModule } from './modules/billing/billing.module';
 import { StorageModule } from './storage/storage.module';
 
 @Module({
@@ -58,6 +59,7 @@ import { StorageModule } from './storage/storage.module';
   controllers: [AppController],
   providers: [
     AppService,
+    SuperAdminBootstrap,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

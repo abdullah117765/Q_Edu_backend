@@ -1,7 +1,9 @@
 import * as Joi from 'joi';
 
 export const validationSchema = Joi.object({
-  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  NODE_ENV: Joi.string()
+    .valid('development', 'test', 'production')
+    .default('development'),
   PORT: Joi.number().default(3000),
   DATABASE_URL: Joi.string().uri().required(),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
@@ -11,7 +13,9 @@ export const validationSchema = Joi.object({
   AUTH_REFRESH_TOKEN_COOKIE_NAME: Joi.string().default('qedu_refresh_token'),
   AUTH_COOKIE_DOMAIN: Joi.string().allow('').optional(),
   AUTH_COOKIE_SECURE: Joi.boolean().truthy('true').falsy('false').default(true),
-  AUTH_COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
+  AUTH_COOKIE_SAMESITE: Joi.string()
+    .valid('lax', 'strict', 'none')
+    .default('lax'),
   SMTP_HOST: Joi.string().required(),
   SMTP_PORT: Joi.number().integer().positive().default(587),
   SMTP_USER: Joi.string().required(),
@@ -48,8 +52,12 @@ export const validationSchema = Joi.object({
   STRIPE_CLIENT_ID: Joi.string().allow('').optional(),
   STRIPE_API_VERSION: Joi.string().allow('').optional(),
   STRIPE_CURRENCY: Joi.string().lowercase().length(3).default('usd'),
-  STRIPE_SUCCESS_URL: Joi.string().uri({ allowRelative: false }).allow('').optional(),
-  STRIPE_CANCEL_URL: Joi.string().uri({ allowRelative: false }).allow('').optional(),
-  STRIPE_PORTAL_RETURN_URL: Joi.string().uri({ allowRelative: false }).allow('').optional(),
+  STRIPE_SUCCESS_URL: Joi.string().allow('').optional(),
+  STRIPE_CANCEL_URL: Joi.string().allow('').optional(),
+  STRIPE_PORTAL_RETURN_URL: Joi.string().allow('').optional(),
   PLATFORM_FEE_PERCENT: Joi.number().min(0).max(100).default(10),
+  SUPER_ADMIN_EMAIL: Joi.string().email({ tlds: false }).allow('').optional(),
+  SUPER_ADMIN_PASSWORD: Joi.string().min(8).allow('').optional(),
+  SUPER_ADMIN_FIRST_NAME: Joi.string().allow('').default('Super'),
+  SUPER_ADMIN_LAST_NAME: Joi.string().allow('').default('Admin'),
 });

@@ -29,14 +29,20 @@ export default () => ({
   auth: {
     jwtAccessSecret: process.env.JWT_ACCESS_SECRET ?? '',
     jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
-    refreshTokenTtlSeconds: parseInt(process.env.JWT_REFRESH_TTL_SECONDS ?? '604800', 10),
-    accessTokenCookieName: process.env.AUTH_ACCESS_TOKEN_COOKIE_NAME ?? 'qedu_access_token',
-    refreshTokenCookieName: process.env.AUTH_REFRESH_TOKEN_COOKIE_NAME ?? 'qedu_refresh_token',
+    refreshTokenTtlSeconds: parseInt(
+      process.env.JWT_REFRESH_TTL_SECONDS ?? '604800',
+      10,
+    ),
+    accessTokenCookieName:
+      process.env.AUTH_ACCESS_TOKEN_COOKIE_NAME ?? 'qedu_access_token',
+    refreshTokenCookieName:
+      process.env.AUTH_REFRESH_TOKEN_COOKIE_NAME ?? 'qedu_refresh_token',
     cookieDomain: (() => {
       const domain = process.env.AUTH_COOKIE_DOMAIN?.trim();
       return domain ? domain : undefined;
     })(),
-    cookieSecure: (process.env.AUTH_COOKIE_SECURE ?? 'true').toLowerCase() === 'true',
+    cookieSecure:
+      (process.env.AUTH_COOKIE_SECURE ?? 'true').toLowerCase() === 'true',
     cookieSameSite: (() => {
       const value = (process.env.AUTH_COOKIE_SAMESITE ?? 'lax').toLowerCase();
       return ['lax', 'strict', 'none'].includes(value) ? value : 'lax';
@@ -79,7 +85,8 @@ export default () => ({
   storage: (() => {
     const driver = (process.env.FILE_STORAGE_DRIVER ?? 'local').toLowerCase();
     const localRoot =
-      process.env.LOCAL_STORAGE_ROOT && process.env.LOCAL_STORAGE_ROOT.trim().length > 0
+      process.env.LOCAL_STORAGE_ROOT &&
+      process.env.LOCAL_STORAGE_ROOT.trim().length > 0
         ? process.env.LOCAL_STORAGE_ROOT.trim()
         : join(process.cwd(), 'storage', 'uploads');
 
@@ -88,7 +95,9 @@ export default () => ({
       local: {
         root: localRoot,
       },
-      publicServeRoot: ensureLeadingSlash(process.env.FILE_STORAGE_PUBLIC_ROOT ?? '/storage'),
+      publicServeRoot: ensureLeadingSlash(
+        process.env.FILE_STORAGE_PUBLIC_ROOT ?? '/storage',
+      ),
       publicBaseUrl: process.env.FILE_STORAGE_PUBLIC_URL?.trim() || '',
     };
   })(),
@@ -96,7 +105,9 @@ export default () => ({
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? '';
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim() ?? '';
-    const platformFeePercentRaw = parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '10');
+    const platformFeePercentRaw = parseFloat(
+      process.env.PLATFORM_FEE_PERCENT ?? '10',
+    );
     const platformFeePercent = Number.isFinite(platformFeePercentRaw)
       ? Math.max(0, Math.min(100, platformFeePercentRaw))
       : 10;
@@ -108,9 +119,20 @@ export default () => ({
       apiVersion: (process.env.STRIPE_API_VERSION ?? '2024-06-20') as string,
       currency: (process.env.STRIPE_CURRENCY ?? 'usd').toLowerCase(),
       platformFeePercent,
-      successUrl: process.env.STRIPE_SUCCESS_URL ?? 'http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}',
-      cancelUrl: process.env.STRIPE_CANCEL_URL ?? 'http://localhost:5173/billing/cancel',
-      portalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL ?? 'http://localhost:5173/academy/billing',
+      successUrl:
+        process.env.STRIPE_SUCCESS_URL ??
+        'http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl:
+        process.env.STRIPE_CANCEL_URL ?? 'http://localhost:5173/billing/cancel',
+      portalReturnUrl:
+        process.env.STRIPE_PORTAL_RETURN_URL ??
+        'http://localhost:5173/academy/billing',
     };
   })(),
+  superAdmin: {
+    email: process.env.SUPER_ADMIN_EMAIL?.trim() ?? '',
+    password: process.env.SUPER_ADMIN_PASSWORD ?? '',
+    firstName: process.env.SUPER_ADMIN_FIRST_NAME?.trim() || 'Super',
+    lastName: process.env.SUPER_ADMIN_LAST_NAME?.trim() || 'Admin',
+  },
 });
