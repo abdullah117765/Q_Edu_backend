@@ -92,4 +92,25 @@ export default () => ({
       publicBaseUrl: process.env.FILE_STORAGE_PUBLIC_URL?.trim() || '',
     };
   })(),
+  stripe: (() => {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? '';
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim() ?? '';
+    const platformFeePercentRaw = parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '10');
+    const platformFeePercent = Number.isFinite(platformFeePercentRaw)
+      ? Math.max(0, Math.min(100, platformFeePercentRaw))
+      : 10;
+    return {
+      enabled: secretKey.length > 0,
+      secretKey,
+      publishableKey,
+      webhookSecret,
+      apiVersion: (process.env.STRIPE_API_VERSION ?? '2024-06-20') as string,
+      currency: (process.env.STRIPE_CURRENCY ?? 'usd').toLowerCase(),
+      platformFeePercent,
+      successUrl: process.env.STRIPE_SUCCESS_URL ?? 'http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: process.env.STRIPE_CANCEL_URL ?? 'http://localhost:5173/billing/cancel',
+      portalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL ?? 'http://localhost:5173/academy/billing',
+    };
+  })(),
 });
