@@ -8,7 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
-- **Stripe billing**: full integration with checkout, webhooks, customer portal and subscription management.
+- **Notifications**: new `Notification` Prisma model with `NotificationType` enum (`PAYMENT_RECEIVED`, `PAYMENT_FAILED`, `SUBSCRIPTION_ACTIVATED`, `SUBSCRIPTION_CANCELLED`, `COUPON_REDEEMED`, `MEMBERSHIP_PENDING`, `MEMBERSHIP_APPROVED`, `MEMBERSHIP_REJECTED`, `GENERIC`).
+  - `NotificationsModule` exposing `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `POST /api/notifications/read-all`.
+  - `BillingService` now dispatches notifications on Stripe `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, subscription activation and coupon redemption (also broadcasts to active super admins).
+  - `UsersService.updateStatus` notifies the affected teacher/student when their membership is approved, rejected or set to pending.
+- **Owner-scoped membership management**: `ACADEMY_OWNER`s can now approve/reject their own teachers and students through `PATCH /api/users/:id/status`. Newly created teachers/students by an owner are auto-linked as `PENDING` `AcademyMembership` rows in the owner's academy.
+- **Credit usage trend**: `GET /api/zoom-credits/me/usage-trend?days=N` returns per-day credited/debited/net totals (1–365 days, default 30) for the authenticated user.
+
+### Stripe billing — initial release
+
+- Full integration with checkout, webhooks, customer portal and subscription management.
   - New Prisma models: `ZoomCreditPackage`, `SubscriptionPlan`, `Subscription`, `StripeCustomer`, `StripeWebhookEvent`.
   - New `Payment` columns: `platformFeeAmount`, `netAmount`, `description`, `packageId`, `subscriptionId`.
   - `StripeModule` (global) wrapping the Stripe SDK; lazy-initialised when `STRIPE_SECRET_KEY` is present.
