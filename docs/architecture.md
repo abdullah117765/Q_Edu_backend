@@ -20,31 +20,31 @@
 
 ## Backend modules
 
-| Module                | Responsibility                                                                 |
-|-----------------------|--------------------------------------------------------------------------------|
-| `auth`                | Registration, OTP verification, login, refresh, password reset, change password|
-| `users`               | User CRUD, profile, photo upload, directory queries with role scoping          |
-| `academies`           | Owner onboarding, admin review, membership lifecycle, settings                 |
-| `academy-settings`    | Per-academy preferences (meeting defaults, branding)                           |
-| `platform-settings`   | Global flags such as Zoom enablement                                           |
-| `classes`             | Class scheduling, attendance, Zoom meeting provisioning                        |
-| `zoom`                | Zoom OAuth (server-to-server) and meeting CRUD                                 |
-| `zoom-credits`        | Credit pool, consumption, payments link                                        |
-| `payments`            | Payment intents, history, summaries                                            |
-| `resources`           | Teacher uploaded materials, access control                                     |
-| `dashboard`           | Aggregated overview metrics                                                    |
-| `mail`                | Transactional SMTP delivery                                                    |
-| `storage`             | Pluggable storage driver (local + interface for S3)                            |
+| Module              | Responsibility                                                                  |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `auth`              | Registration, OTP verification, login, refresh, password reset, change password |
+| `users`             | User CRUD, profile, photo upload, directory queries with role scoping           |
+| `academies`         | Owner onboarding, admin review, membership lifecycle, settings                  |
+| `academy-settings`  | Per-academy preferences (meeting defaults, branding)                            |
+| `platform-settings` | Global flags such as Zoom enablement                                            |
+| `classes`           | Class scheduling, attendance, Zoom meeting provisioning                         |
+| `zoom`              | Zoom OAuth (server-to-server) and meeting CRUD                                  |
+| `zoom-credits`      | Credit pool, consumption, payments link                                         |
+| `payments`          | Payment intents, history, summaries                                             |
+| `resources`         | Teacher uploaded materials, access control                                      |
+| `dashboard`         | Aggregated overview metrics                                                     |
+| `mail`              | Transactional SMTP delivery                                                     |
+| `storage`           | Pluggable storage driver (local + interface for S3)                             |
 
 ## Cross-cutting concerns
 
-* **Validation** — global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` enforces DTO contracts. Custom decorators in `src/common/validators/`.
-* **Throttling** — `@nestjs/throttler` global guard, 60 req/min default, 3-5/min on auth endpoints.
-* **Security headers** — `helmet()` middleware in `main.ts`.
-* **CORS** — origins from `CORS_ALLOWED_ORIGINS` env. Credentials enabled.
-* **Auth guard** — `@Auth(...roles)` decorator wraps `JwtAuthGuard + RolesGuard`. Roles: `SUPER_ADMIN`, `ACADEMY_OWNER`, `TEACHER`, `STUDENT`.
-* **Errors** — `AllExceptionsFilter` normalises errors into `{ statusCode, message, error }`.
-* **Responses** — `ResponseInterceptor` wraps payloads with `data`, `meta`, `summary` fields where applicable.
+- **Validation** — global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` enforces DTO contracts. Custom decorators in `src/common/validators/`.
+- **Throttling** — `@nestjs/throttler` global guard, 60 req/min default, 3-5/min on auth endpoints.
+- **Security headers** — `helmet()` middleware in `main.ts`.
+- **CORS** — origins from `CORS_ALLOWED_ORIGINS` env. Credentials enabled.
+- **Auth guard** — `@Auth(...roles)` decorator wraps `JwtAuthGuard + RolesGuard`. Roles: `SUPER_ADMIN`, `ACADEMY_OWNER`, `TEACHER`, `STUDENT`.
+- **Errors** — `AllExceptionsFilter` normalises errors into `{ statusCode, message, error }`.
+- **Responses** — `ResponseInterceptor` wraps payloads with `data`, `meta`, `summary` fields where applicable.
 
 ## Onboarding & approval flow
 

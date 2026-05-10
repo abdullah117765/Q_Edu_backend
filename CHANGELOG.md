@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ## [Unreleased]
 
 ### Added
+
 - **Stripe billing**: full integration with checkout, webhooks, customer portal and subscription management.
   - New Prisma models: `ZoomCreditPackage`, `SubscriptionPlan`, `Subscription`, `StripeCustomer`, `StripeWebhookEvent`.
   - New `Payment` columns: `platformFeeAmount`, `netAmount`, `description`, `packageId`, `subscriptionId`.
@@ -30,10 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Docs: `architecture.md`, `security.md`, `api-reference.md`, `production-readiness.md`.
 
 ### Changed
+
 - `UsersService.findAll` and `findByRole` now include the owner's academy and the user's approved academy memberships, fixing missing/incorrect academy names in the User Management list.
 - Production input length limits: name ≤ 80, bio ≤ 500, phone ≤ 32, email ≤ 254, password ≤ 128, gender ≤ 64.
 - `GET /users/students` now masks student emails as `a***@domain.com` when the caller is a `TEACHER`.
 
 ### Fixed
+
 - "property status should not exist" 400 when filtering the Super Admin Directory.
 - Super Admin academy preview previously showed user-status (always APPROVED for owners) instead of the academy review status.

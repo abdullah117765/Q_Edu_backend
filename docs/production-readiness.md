@@ -48,6 +48,7 @@ Use this list before promoting to production.
 ## Smoke test
 
 After every deploy run the smoke checklist:
+
 1. Register a new test user, verify OTP delivery.
 2. Login, refresh, change password.
 3. Super Admin: approve a teacher and a student.
