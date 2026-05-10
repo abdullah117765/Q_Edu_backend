@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+    Injectable,
+    Logger,
+    OnModuleInit,
+    ServiceUnavailableException
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
@@ -22,12 +27,16 @@ export class StripeService implements OnModuleInit {
   private readonly config: StripeConfig;
 
   constructor(private readonly configService: ConfigService) {
-    this.config = this.configService.get<StripeConfig>('stripe') as StripeConfig;
+    this.config = this.configService.get<StripeConfig>(
+      'stripe',
+    ) as StripeConfig;
   }
 
   onModuleInit(): void {
     if (!this.config?.enabled || !this.config?.secretKey) {
-      this.logger.warn('Stripe is not configured (STRIPE_SECRET_KEY missing). Billing endpoints will return 503.');
+      this.logger.warn(
+        'Stripe is not configured (STRIPE_SECRET_KEY missing). Billing endpoints will return 503.',
+      );
       return;
     }
     this.client = new Stripe(this.config.secretKey, {
@@ -35,7 +44,9 @@ export class StripeService implements OnModuleInit {
       typescript: true,
       appInfo: { name: 'Q Edu', version: '1.0.0' },
     });
-    this.logger.log(`Stripe initialised (currency=${this.config.currency}, platformFee=${this.config.platformFeePercent}%)`);
+    this.logger.log(
+      `Stripe initialised (currency=${this.config.currency}, platformFee=${this.config.platformFeePercent}%)`,
+    );
   }
 
   isEnabled(): boolean {
@@ -53,7 +64,9 @@ export class StripeService implements OnModuleInit {
 
   private getClient(): Stripe {
     if (!this.client) {
-      throw new ServiceUnavailableException('Billing is not configured on this environment.');
+      throw new ServiceUnavailableException(
+        'Billing is not configured on this environment.',
+      );
     }
     return this.client;
   }
@@ -67,21 +80,40 @@ export class StripeService implements OnModuleInit {
     return Math.round((grossCents * pct) / 100);
   }
 
-  splitAmountCents(grossCents: number): { gross: number; fee: number; net: number; feePercent: number } {
+  splitAmountCents(grossCents: number): {
+    gross: number;
+    fee: number;
+    net: number;
+    feePercent: number;
+  } {
     const fee = this.calculatePlatformFeeCents(grossCents);
-    return { gross: grossCents, fee, net: grossCents - fee, feePercent: this.config.platformFeePercent ?? 10 };
+    return {
+      gross: grossCents,
+      fee,
+      net: grossCents - fee,
+      feePercent: this.config.platformFeePercent ?? 10,
+    };
   }
 
-  async findOrCreateCustomer(params: { userId: string; email: string; name?: string; existingCustomerId?: string | null }): Promise<Stripe.Customer> {
+  async findOrCreateCustomer(params: {
+    userId: string;
+    email: string;
+    name?: string;
+    existingCustomerId?: string | null;
+  }): Promise<Stripe.Customer> {
     const stripe = this.getClient();
     if (params.existingCustomerId) {
       try {
-        const existing = await stripe.customers.retrieve(params.existingCustomerId);
+        const existing = await stripe.customers.retrieve(
+          params.existingCustomerId,
+        );
         if (!existing.deleted) {
           return existing as Stripe.Customer;
         }
       } catch (err) {
-        this.logger.warn(`Stripe customer ${params.existingCustomerId} not retrievable: ${(err as Error).message}`);
+        this.logger.warn(
+          `Stripe customer ${params.existingCustomerId} not retrievable: ${(err as Error).message}`,
+        );
       }
     }
     return stripe.customers.create({
@@ -99,8 +131,15 @@ export class StripeService implements OnModuleInit {
     metadata: Record<string, string>;
     successUrl?: string;
     cancelUrl?: string;
+    /** Optional Stripe coupon id to apply to the session */
+    discountCouponId?: string;
     /** For one-off checkout when no priceId is configured */
-    inlinePrice?: { name: string; description?: string; unitAmount: number; currency: string };
+    inlinePrice?: {
+      name: string;
+      description?: string;
+      unitAmount: number;
+      currency: string;
+    };
   }): Promise<Stripe.Checkout.Session> {
     const stripe = this.getClient();
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
@@ -119,7 +158,9 @@ export class StripeService implements OnModuleInit {
         },
       });
     } else {
-      throw new Error('createCheckoutSession requires either priceId or inlinePrice');
+      throw new Error(
+        'createCheckoutSession requires either priceId or inlinePrice',
+      );
     }
 
     return stripe.checkout.sessions.create({
@@ -127,15 +168,22 @@ export class StripeService implements OnModuleInit {
       customer: params.customerId,
       line_items: lineItems,
       payment_method_types: ['card'],
-      allow_promotion_codes: true,
+      allow_promotion_codes: !params.discountCouponId,
+      discounts: params.discountCouponId ? [{ coupon: params.discountCouponId }] : undefined,
       success_url: params.successUrl ?? this.config.successUrl,
       cancel_url: params.cancelUrl ?? this.config.cancelUrl,
       metadata: params.metadata,
-      subscription_data: params.mode === 'subscription' ? { metadata: params.metadata } : undefined,
+      subscription_data:
+        params.mode === 'subscription'
+          ? { metadata: params.metadata }
+          : undefined,
     });
   }
 
-  async createBillingPortalSession(customerId: string, returnUrl?: string): Promise<Stripe.BillingPortal.Session> {
+  async createBillingPortalSession(
+    customerId: string,
+    returnUrl?: string,
+  ): Promise<Stripe.BillingPortal.Session> {
     const stripe = this.getClient();
     return stripe.billingPortal.sessions.create({
       customer: customerId,
@@ -143,10 +191,15 @@ export class StripeService implements OnModuleInit {
     });
   }
 
-  async cancelSubscription(stripeSubscriptionId: string, atPeriodEnd = true): Promise<Stripe.Subscription> {
+  async cancelSubscription(
+    stripeSubscriptionId: string,
+    atPeriodEnd = true,
+  ): Promise<Stripe.Subscription> {
     const stripe = this.getClient();
     if (atPeriodEnd) {
-      return stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: true });
+      return stripe.subscriptions.update(stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
     }
     return stripe.subscriptions.cancel(stripeSubscriptionId);
   }
@@ -155,9 +208,15 @@ export class StripeService implements OnModuleInit {
   constructEvent(rawBody: Buffer | string, signature: string): Stripe.Event {
     const stripe = this.getClient();
     if (!this.config.webhookSecret) {
-      throw new ServiceUnavailableException('Stripe webhook secret is not configured.');
+      throw new ServiceUnavailableException(
+        'Stripe webhook secret is not configured.',
+      );
     }
-    return stripe.webhooks.constructEvent(rawBody, signature, this.config.webhookSecret);
+    return stripe.webhooks.constructEvent(
+      rawBody,
+      signature,
+      this.config.webhookSecret,
+    );
   }
 
   async ensureProductAndPrice(params: {
@@ -172,7 +231,10 @@ export class StripeService implements OnModuleInit {
     const stripe = this.getClient();
     let productId = params.productId ?? '';
     if (!productId) {
-      const product = await stripe.products.create({ name: params.productName, metadata: params.metadata });
+      const product = await stripe.products.create({
+        name: params.productName,
+        metadata: params.metadata,
+      });
       productId = product.id;
     }
     if (params.priceId) {
@@ -193,5 +255,78 @@ export class StripeService implements OnModuleInit {
       metadata: params.metadata,
     });
     return { productId, priceId: price.id };
+  }
+
+  // ---- Coupons & promotion codes ----
+
+  async createCoupon(params: {
+    name: string;
+    percentOff?: number;
+    amountOffCents?: number;
+    currency?: string;
+    duration: 'ONCE' | 'REPEATING' | 'FOREVER';
+    durationMonths?: number;
+    maxRedemptions?: number;
+    redeemBy?: Date;
+  }): Promise<Stripe.Coupon> {
+    const stripe = this.getClient();
+    return stripe.coupons.create({
+      name: params.name,
+      percent_off: params.percentOff,
+      amount_off: params.amountOffCents,
+      currency: params.amountOffCents ? (params.currency ?? this.config.currency).toLowerCase() : undefined,
+      duration: params.duration.toLowerCase() as 'once' | 'repeating' | 'forever',
+      duration_in_months: params.duration === 'REPEATING' ? params.durationMonths : undefined,
+      max_redemptions: params.maxRedemptions,
+      redeem_by: params.redeemBy ? Math.floor(params.redeemBy.getTime() / 1000) : undefined,
+    });
+  }
+
+  async createPromotionCode(params: {
+    couponId: string;
+    code: string;
+    maxRedemptions?: number;
+    expiresAt?: Date;
+    active?: boolean;
+  }): Promise<Stripe.PromotionCode> {
+    const stripe = this.getClient();
+    return stripe.promotionCodes.create({
+      coupon: params.couponId,
+      code: params.code,
+      max_redemptions: params.maxRedemptions,
+      expires_at: params.expiresAt ? Math.floor(params.expiresAt.getTime() / 1000) : undefined,
+      active: params.active ?? true,
+    });
+  }
+
+  async updatePromotionCode(
+    id: string,
+    params: { active?: boolean },
+  ): Promise<Stripe.PromotionCode> {
+    const stripe = this.getClient();
+    return stripe.promotionCodes.update(id, { active: params.active });
+  }
+
+  async refundPayment(params: {
+    paymentIntentId?: string;
+    checkoutSessionId?: string;
+    amountCents?: number;
+  }): Promise<Stripe.Refund> {
+    const stripe = this.getClient();
+    let paymentIntent = params.paymentIntentId;
+    if (!paymentIntent && params.checkoutSessionId) {
+      const session = await stripe.checkout.sessions.retrieve(params.checkoutSessionId);
+      paymentIntent =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id;
+    }
+    if (!paymentIntent) {
+      throw new ServiceUnavailableException('No payment intent available for refund.');
+    }
+    return stripe.refunds.create({
+      payment_intent: paymentIntent,
+      amount: params.amountCents,
+    });
   }
 }

@@ -467,6 +467,66 @@ model StripeWebhookEvent {
   @@index([processedAt])
 }
 
+enum CouponDiscountType {
+  PERCENT
+  AMOUNT
+}
+
+enum CouponDuration {
+  ONCE
+  REPEATING
+  FOREVER
+}
+
+enum CouponAppliesTo {
+  ALL
+  PACKAGES
+  PLANS
+}
+
+model Coupon {
+  id              String              @id @default(cuid())
+  code            String              @unique
+  name            String
+  description     String?
+  discountType    CouponDiscountType  @default(PERCENT)
+  percentOff      Int?
+  amountOffCents  Int?
+  currency        String              @default("USD")
+  duration        CouponDuration      @default(ONCE)
+  durationMonths  Int?
+  appliesTo       CouponAppliesTo     @default(ALL)
+  maxRedemptions  Int?
+  timesRedeemed   Int                 @default(0)
+  startsAt        DateTime?
+  expiresAt       DateTime?
+  active          Boolean             @default(true)
+  highlight       Boolean             @default(false)
+  marketingTitle  String?
+  marketingBody   String?
+  stripeCouponId  String?             @unique
+  stripePromotionCodeId String?       @unique
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  redemptions     CouponRedemption[]
+
+  @@index([active])
+  @@index([expiresAt])
+}
+
+model CouponRedemption {
+  id         String   @id @default(cuid())
+  couponId   String
+  userId     String?
+  paymentId  String?
+  amountOffCents Int?
+  createdAt  DateTime @default(now())
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([userId])
+}
+
 model PlatformSetting {
   key         String   @id
   value       Json

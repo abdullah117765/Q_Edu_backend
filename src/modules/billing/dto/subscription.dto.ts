@@ -1,7 +1,16 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { SubscriptionInterval } from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+    IsBoolean,
+    IsEnum,
+    IsInt,
+    IsOptional,
+    IsString,
+    Length,
+    Max,
+    Min,
+} from 'class-validator';
 
 export class CreateSubscriptionPlanDto {
   @ApiProperty({ example: 'Pro Academy', maxLength: 80 })
@@ -15,7 +24,11 @@ export class CreateSubscriptionPlanDto {
   @Length(0, 280)
   description?: string;
 
-  @ApiProperty({ example: 'pro', description: 'Tier slug (free, pro, scale)', maxLength: 32 })
+  @ApiProperty({
+    example: 'pro',
+    description: 'Tier slug (free, pro, scale)',
+    maxLength: 32,
+  })
   @IsString()
   @Length(2, 32)
   tier!: string;
@@ -33,7 +46,10 @@ export class CreateSubscriptionPlanDto {
   @Length(3, 3)
   currency?: string;
 
-  @ApiPropertyOptional({ enum: SubscriptionInterval, default: SubscriptionInterval.MONTHLY })
+  @ApiPropertyOptional({
+    enum: SubscriptionInterval,
+    default: SubscriptionInterval.MONTHLY,
+  })
   @IsOptional()
   @IsEnum(SubscriptionInterval)
   interval?: SubscriptionInterval;
@@ -84,15 +100,23 @@ export class CreateSubscriptionPlanDto {
   sortOrder?: number;
 }
 
-export class UpdateSubscriptionPlanDto extends PartialType(CreateSubscriptionPlanDto) {}
+export class UpdateSubscriptionPlanDto extends PartialType(
+  CreateSubscriptionPlanDto,
+) {}
 
 export class StartCheckoutDto {
-  @ApiProperty({ example: 'pkg_starter', description: 'ZoomCreditPackage id or SubscriptionPlan id' })
+  @ApiProperty({
+    example: 'pkg_starter',
+    description: 'ZoomCreditPackage id or SubscriptionPlan id',
+  })
   @IsString()
   @Length(1, 64)
   id!: string;
 
-  @ApiPropertyOptional({ description: 'Optional quantity multiplier (one-time only)', default: 1 })
+  @ApiPropertyOptional({
+    description: 'Optional quantity multiplier (one-time only)',
+    default: 1,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -100,13 +124,23 @@ export class StartCheckoutDto {
   @Max(50)
   quantity?: number;
 
-  @ApiPropertyOptional({ description: 'Optional override redirect URL on success' })
+  @ApiPropertyOptional({
+    description: 'Optional override redirect URL on success',
+  })
   @IsOptional()
   @IsString()
   successUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Optional override redirect URL on cancel' })
+  @ApiPropertyOptional({
+    description: 'Optional override redirect URL on cancel',
+  })
   @IsOptional()
   @IsString()
   cancelUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Optional coupon/promotion code' })
+  @IsOptional()
+  @IsString()
+  @Length(2, 32)
+  couponCode?: string;
 }
