@@ -177,9 +177,62 @@ export class UsersService {
     const { page, limit } = query;
     const skip = (page - 1) * limit;
 
+    let ownerAcademyIds: string[] = [];
+    if (query.ownerId) {
+      const ownerAcademies = await this.prisma.academy.findMany({
+        where: { ownerId: query.ownerId },
+        select: { id: true },
+      });
+      ownerAcademyIds = ownerAcademies.map((academy) => academy.id);
+    }
+
+    const roleFilter: Prisma.UserWhereInput = query.role
+      ? { role: query.role }
+      : {};
+
+    const academyFilter: Prisma.UserWhereInput = query.academyId
+      ? {
+          OR: [
+            { ownedAcademy: { id: query.academyId } },
+            {
+              academyMemberships: {
+                some: {
+                  academyId: query.academyId,
+                },
+              },
+            },
+          ],
+        }
+      : {};
+
+    const ownerFilter: Prisma.UserWhereInput = query.ownerId
+      ? ownerAcademyIds.length > 0
+        ? {
+            OR: [
+              { ownedAcademy: { ownerId: query.ownerId } },
+              {
+                academyMemberships: {
+                  some: {
+                    academyId: { in: ownerAcademyIds },
+                  },
+                },
+              },
+            ],
+          }
+        : { id: { in: [] } }
+      : {};
+
     const baseWhere: Prisma.UserWhereInput = {
+      role: { not: PrismaRole.SUPER_ADMIN },
       ...(query.status ? { status: query.status } : {}),
+      ...roleFilter,
+      ...(query.academyId ? { AND: [academyFilter] } : {}),
+      ...(query.ownerId ? { AND: [ownerFilter] } : {}),
     };
+
+    if (query.academyId && query.ownerId) {
+      baseWhere.AND = [academyFilter, ownerFilter];
+    }
 
     const search = query.search?.trim();
     if (search) {

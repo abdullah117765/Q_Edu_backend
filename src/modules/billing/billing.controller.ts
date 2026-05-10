@@ -118,10 +118,17 @@ export class BillingController {
   @Get('admin/analytics')
   @Auth(Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Platform billing analytics for super admin' })
-  adminAnalytics(@Query('from') from?: string, @Query('to') to?: string) {
+  adminAnalytics(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('interval') interval?: 'day' | 'week' | 'month',
+    @Query('provider') provider?: string,
+  ) {
     return this.billing.getAdminAnalytics({
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
+      interval,
+      provider,
     });
   }
 

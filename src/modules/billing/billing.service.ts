@@ -369,15 +369,24 @@ export class BillingService {
 
   // ---------- Admin analytics ----------
 
-  async getAdminAnalytics(opts: { from?: Date; to?: Date }) {
-    const where: Prisma.PaymentWhereInput = { status: 'completed' };
-    if (opts.from || opts.to) {
-      where.createdAt = {
-        ...(opts.from ? { gte: opts.from } : {}),
-        ...(opts.to ? { lte: opts.to } : {}),
-      };
-    }
-    const [agg, byProvider, byPackage, byPlan, recent, activeSubs, mrrAgg] =
+  async getAdminAnalytics(opts: {
+    from?: Date;
+    to?: Date;
+    interval?: 'day' | 'week' | 'month';
+    provider?: string;
+  }) {
+    const interval = opts.interval ?? 'day';
+    const now = new Date();
+    const from = opts.from ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const to = opts.to ?? now;
+
+    const where: Prisma.PaymentWhereInput = {
+      status: 'completed',
+      createdAt: { gte: from, lte: to },
+      ...(opts.provider ? { provider: opts.provider } : {}),
+    };
+
+    const [agg, byProvider, byPackage, byPlan, recent, activeSubs, mrrAgg, timeSeriesRows] =
       await Promise.all([
         this.prisma.payment.aggregate({
           where,
@@ -427,6 +436,16 @@ export class BillingService {
           where: { status: SubscriptionStatus.ACTIVE },
           include: { plan: true },
         }),
+        this.prisma.payment.findMany({
+          where,
+          select: {
+            createdAt: true,
+            amount: true,
+            platformFeeAmount: true,
+            netAmount: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        }),
       ]);
 
     const monthlyRecurringCents = mrrAgg.reduce((acc, sub) => {
@@ -435,6 +454,13 @@ export class BillingService {
         sub.plan.interval === SubscriptionInterval.YEARLY ? 1 / 12 : 1;
       return acc + Math.round(cents * factor);
     }, 0);
+
+    const timeSeries = this.buildRevenueSeries(
+      timeSeriesRows,
+      from,
+      to,
+      interval,
+    );
 
     return {
       totals: {
@@ -449,6 +475,7 @@ export class BillingService {
       byProvider,
       byPackage,
       byPlan,
+      timeSeries,
       recent,
     };
   }
@@ -767,12 +794,19 @@ export class BillingService {
       this.logger.log(
         `Granted ${credits} credits to ${userId} for package ${pkg.id}`,
       );
-      await this.safeNotify(userId, 'PAYMENT_RECEIVED', `Payment received: ${pkg.name}`,
+      await this.safeNotify(
+        userId,
+        'PAYMENT_RECEIVED',
+        `Payment received: ${pkg.name}`,
         `+${credits} Zoom credits added to your balance.`,
-        { kind: 'package', packageId: pkg.id, credits, grossCents });
-      await this.notifyAdmins('PAYMENT_RECEIVED', `New payment: ${pkg.name}`,
+        { kind: 'package', packageId: pkg.id, credits, grossCents },
+      );
+      await this.notifyAdmins(
+        'PAYMENT_RECEIVED',
+        `New payment: ${pkg.name}`,
         `User ${userId} purchased ${pkg.name} ($${(grossCents / 100).toFixed(2)})`,
-        { kind: 'package', userId, packageId: pkg.id, grossCents });
+        { kind: 'package', userId, packageId: pkg.id, grossCents },
+      );
       return;
     }
 
@@ -792,12 +826,19 @@ export class BillingService {
           metadata: { stripeSessionId: session.id, planId: meta.planId },
         },
       });
-      await this.safeNotify(userId, 'SUBSCRIPTION_ACTIVATED', 'Subscription activated',
+      await this.safeNotify(
+        userId,
+        'SUBSCRIPTION_ACTIVATED',
+        'Subscription activated',
         'Welcome aboard! Your subscription is now active.',
-        { planId: meta.planId, grossCents });
-      await this.notifyAdmins('SUBSCRIPTION_ACTIVATED', 'New subscription',
+        { planId: meta.planId, grossCents },
+      );
+      await this.notifyAdmins(
+        'SUBSCRIPTION_ACTIVATED',
+        'New subscription',
         `User ${userId} activated plan ${meta.planId}.`,
-        { userId, planId: meta.planId, grossCents });
+        { userId, planId: meta.planId, grossCents },
+      );
     }
 
     if (meta.couponId) {
@@ -809,9 +850,16 @@ export class BillingService {
             ? Number(meta.discountCents)
             : undefined,
         });
-        await this.safeNotify(userId, 'COUPON_REDEEMED', 'Coupon applied',
+        await this.safeNotify(
+          userId,
+          'COUPON_REDEEMED',
+          'Coupon applied',
           `Your discount was applied at checkout.`,
-          { couponId: meta.couponId, discountCents: meta.discountCents ?? null });
+          {
+            couponId: meta.couponId,
+            discountCents: meta.discountCents ?? null,
+          },
+        );
       } catch (err) {
         this.logger.warn(
           `Failed to record coupon redemption: ${(err as Error).message}`,
@@ -890,9 +938,13 @@ export class BillingService {
         },
       },
     });
-    await this.safeNotify(sub.userId, 'PAYMENT_RECEIVED', 'Subscription renewed',
+    await this.safeNotify(
+      sub.userId,
+      'PAYMENT_RECEIVED',
+      'Subscription renewed',
       `Your subscription invoice was paid ($${(grossCents / 100).toFixed(2)}).`,
-      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url });
+      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url },
+    );
   }
 
   private async onInvoiceFailed(invoice: Stripe.Invoice): Promise<void> {
@@ -906,12 +958,19 @@ export class BillingService {
       where: { id: sub.id },
       data: { status: SubscriptionStatus.PAST_DUE },
     });
-    await this.safeNotify(sub.userId, 'PAYMENT_FAILED', 'Payment failed',
+    await this.safeNotify(
+      sub.userId,
+      'PAYMENT_FAILED',
+      'Payment failed',
       'Your subscription payment could not be processed. Please update your card.',
-      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url });
-    await this.notifyAdmins('PAYMENT_FAILED', 'Subscription payment failed',
+      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url },
+    );
+    await this.notifyAdmins(
+      'PAYMENT_FAILED',
+      'Subscription payment failed',
       `User ${sub.userId} subscription payment failed (invoice ${invoice.id}).`,
-      { userId: sub.userId, invoiceId: invoice.id });
+      { userId: sub.userId, invoiceId: invoice.id },
+    );
   }
 
   // ---------- notification helpers ----------
@@ -962,14 +1021,10 @@ export class BillingService {
         select: { id: true },
       });
       await Promise.all(
-        admins.map((a) =>
-          this.safeNotify(a.id, type, title, body, data),
-        ),
+        admins.map((a) => this.safeNotify(a.id, type, title, body, data)),
       );
     } catch (err) {
-      this.logger.warn(
-        `Admin broadcast failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`Admin broadcast failed: ${(err as Error).message}`);
     }
   }
 
@@ -1020,5 +1075,85 @@ export class BillingService {
       default:
         return SubscriptionStatus.INCOMPLETE;
     }
+  }
+
+  private buildRevenueSeries(
+    rows: Array<{
+      createdAt: Date;
+      amount: Prisma.Decimal;
+      platformFeeAmount: Prisma.Decimal | null;
+      netAmount: Prisma.Decimal | null;
+    }>,
+    from: Date,
+    to: Date,
+    interval: 'day' | 'week' | 'month',
+  ) {
+    const buckets = new Map<
+      string,
+      { label: string; gross: number; platformFee: number; net: number; count: number }
+    >();
+
+    const cursor = new Date(from);
+    while (cursor <= to) {
+      const bucketDate = new Date(cursor);
+      const key = this.bucketKey(bucketDate, interval);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          label: key,
+          gross: 0,
+          platformFee: 0,
+          net: 0,
+          count: 0,
+        });
+      }
+      this.advanceCursor(cursor, interval);
+    }
+
+    for (const row of rows) {
+      const key = this.bucketKey(row.createdAt, interval);
+      const current = buckets.get(key);
+      if (!current) continue;
+      current.gross += Number(row.amount ?? 0);
+      current.platformFee += Number(row.platformFeeAmount ?? 0);
+      current.net += Number(row.netAmount ?? 0);
+      current.count += 1;
+    }
+
+    return Array.from(buckets.values());
+  }
+
+  private bucketKey(date: Date, interval: 'day' | 'week' | 'month'): string {
+    const year = date.getUTCFullYear();
+    const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getUTCDate()}`.padStart(2, '0');
+
+    if (interval === 'day') {
+      return `${year}-${month}-${day}`;
+    }
+
+    if (interval === 'month') {
+      return `${year}-${month}`;
+    }
+
+    const weekStart = new Date(Date.UTC(year, date.getUTCMonth(), date.getUTCDate()));
+    const dayOfWeek = weekStart.getUTCDay();
+    const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    weekStart.setUTCDate(weekStart.getUTCDate() - offset);
+    const wsYear = weekStart.getUTCFullYear();
+    const wsMonth = `${weekStart.getUTCMonth() + 1}`.padStart(2, '0');
+    const wsDay = `${weekStart.getUTCDate()}`.padStart(2, '0');
+    return `${wsYear}-${wsMonth}-${wsDay}`;
+  }
+
+  private advanceCursor(cursor: Date, interval: 'day' | 'week' | 'month') {
+    if (interval === 'day') {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      return;
+    }
+    if (interval === 'week') {
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      return;
+    }
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
 }

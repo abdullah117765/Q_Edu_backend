@@ -12,6 +12,7 @@ import { AcademySettingsModule } from './modules/academy-settings/academy-settin
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { ClassesModule } from './modules/classes/classes.module';
+import { ContactMessagesModule } from './modules/contact-messages/contact-messages.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { MailModule } from './modules/mail/mail.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -47,6 +48,7 @@ import { StorageModule } from './storage/storage.module';
     AuthModule,
     UsersModule,
     ClassesModule,
+    ContactMessagesModule,
     ZoomCreditsModule,
     DashboardModule,
     ResourcesModule,
