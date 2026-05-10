@@ -1,16 +1,24 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { Prisma, ZoomCreditAuditAction, ZoomCreditTransaction, ZoomCreditTransactionType } from '@prisma/client';
+import {
+    Prisma,
+    ZoomCreditAuditAction,
+    ZoomCreditTransaction,
+    ZoomCreditTransactionType,
+} from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateZoomCreditTransactionDto, ZoomCreditOperation } from './dto/create-zoom-credit-transaction.dto';
-import { TransferZoomCreditsDto } from './dto/transfer-zoom-credits.dto';
+import { PaymentsService } from '../payments/payments.service';
+import {
+    CreateZoomCreditTransactionDto,
+    ZoomCreditOperation,
+} from './dto/create-zoom-credit-transaction.dto';
 import { PaginatedZoomCreditTransactionsResponseDto } from './dto/paginated-zoom-credit-transactions-response.dto';
+import { PurchaseZoomCreditsResponseDto } from './dto/purchase-zoom-credits-response.dto';
+import { PurchaseZoomCreditsDto } from './dto/purchase-zoom-credits.dto';
+import { TransferZoomCreditsDto } from './dto/transfer-zoom-credits.dto';
 import { ZoomCreditTransactionsQueryDto } from './dto/zoom-credit-transactions-query.dto';
 import { ZoomCreditSummaryEntity } from './entities/zoom-credit-summary.entity';
 import { ZoomCreditTransactionEntity } from './entities/zoom-credit-transaction.entity';
-import { PurchaseZoomCreditsDto } from './dto/purchase-zoom-credits.dto';
-import { PurchaseZoomCreditsResponseDto } from './dto/purchase-zoom-credits-response.dto';
-import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class ZoomCreditsService {
@@ -21,17 +29,27 @@ export class ZoomCreditsService {
     private readonly paymentsService: PaymentsService,
   ) {}
 
-  async adjustCredits(dto: CreateZoomCreditTransactionDto, actorId?: string): Promise<ZoomCreditTransactionEntity> {
-    const type = dto.operation === ZoomCreditOperation.CREDIT ? ZoomCreditTransactionType.CREDIT : ZoomCreditTransactionType.DEBIT;
+  async adjustCredits(
+    dto: CreateZoomCreditTransactionDto,
+    actorId?: string,
+  ): Promise<ZoomCreditTransactionEntity> {
+    const type =
+      dto.operation === ZoomCreditOperation.CREDIT
+        ? ZoomCreditTransactionType.CREDIT
+        : ZoomCreditTransactionType.DEBIT;
 
     const transaction = await this.prisma.$transaction(async (tx) => {
       const currentBalance = await this.ensureBalance(tx, dto.userId);
 
       const updatedBalance =
-        type === ZoomCreditTransactionType.CREDIT ? currentBalance.balance + dto.amount : currentBalance.balance - dto.amount;
+        type === ZoomCreditTransactionType.CREDIT
+          ? currentBalance.balance + dto.amount
+          : currentBalance.balance - dto.amount;
 
       if (updatedBalance < 0) {
-        throw new BadRequestException('Insufficient credits to complete this operation.');
+        throw new BadRequestException(
+          'Insufficient credits to complete this operation.',
+        );
       }
 
       await tx.zoomCreditBalance.update({
@@ -68,16 +86,23 @@ export class ZoomCreditsService {
       return createdTransaction;
     });
 
-    this.logger.log(`Processed ${type} zoom credit transaction of ${dto.amount} for user ${dto.userId}`);
+    this.logger.log(
+      `Processed ${type} zoom credit transaction of ${dto.amount} for user ${dto.userId}`,
+    );
     return this.mapTransactionEntity(transaction);
   }
 
   async transferCredits(
     dto: TransferZoomCreditsDto,
     actorId?: string,
-  ): Promise<{ outbound: ZoomCreditTransactionEntity; inbound: ZoomCreditTransactionEntity }> {
+  ): Promise<{
+    outbound: ZoomCreditTransactionEntity;
+    inbound: ZoomCreditTransactionEntity;
+  }> {
     if (dto.fromUserId === dto.toUserId) {
-      throw new BadRequestException('Cannot transfer credits to the same user.');
+      throw new BadRequestException(
+        'Cannot transfer credits to the same user.',
+      );
     }
 
     const { outbound, inbound } = await this.prisma.$transaction(async (tx) => {
@@ -91,8 +116,14 @@ export class ZoomCreditsService {
       const newOriginBalance = originBalance.balance - dto.amount;
       const newDestinationBalance = destinationBalance.balance + dto.amount;
 
-      await tx.zoomCreditBalance.update({ where: { userId: dto.fromUserId }, data: { balance: newOriginBalance } });
-      await tx.zoomCreditBalance.update({ where: { userId: dto.toUserId }, data: { balance: newDestinationBalance } });
+      await tx.zoomCreditBalance.update({
+        where: { userId: dto.fromUserId },
+        data: { balance: newOriginBalance },
+      });
+      await tx.zoomCreditBalance.update({
+        where: { userId: dto.toUserId },
+        data: { balance: newDestinationBalance },
+      });
 
       const outboundTransaction = await tx.zoomCreditTransaction.create({
         data: {
@@ -148,14 +179,19 @@ export class ZoomCreditsService {
       return { outbound: outboundTransaction, inbound: inboundTransaction };
     });
 
-    this.logger.log(`Transferred ${dto.amount} zoom credits from ${dto.fromUserId} to ${dto.toUserId}`);
+    this.logger.log(
+      `Transferred ${dto.amount} zoom credits from ${dto.fromUserId} to ${dto.toUserId}`,
+    );
     return {
       outbound: this.mapTransactionEntity(outbound),
       inbound: this.mapTransactionEntity(inbound),
     };
   }
 
-  async purchaseCredits(userId: string, dto: PurchaseZoomCreditsDto): Promise<PurchaseZoomCreditsResponseDto> {
+  async purchaseCredits(
+    userId: string,
+    dto: PurchaseZoomCreditsDto,
+  ): Promise<PurchaseZoomCreditsResponseDto> {
     if (!userId) {
       throw new BadRequestException('Unable to resolve purchaser account.');
     }
@@ -168,7 +204,8 @@ export class ZoomCreditsService {
     const planId = dto.planId?.trim() || undefined;
     const currency = dto.currency?.trim().toUpperCase() || 'USD';
     const paymentReference =
-      dto.paymentReference?.trim() || `PUR-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+      dto.paymentReference?.trim() ||
+      `PUR-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 
     const transaction = await this.adjustCredits(
       {
@@ -189,7 +226,12 @@ export class ZoomCreditsService {
 
     const summary = await this.getSummary(userId);
 
-    await this.paymentsService.recordInternalPurchase(userId, amount, 'internal', paymentReference);
+    await this.paymentsService.recordInternalPurchase(
+      userId,
+      amount,
+      'internal',
+      paymentReference,
+    );
 
     return {
       summary,
@@ -213,11 +255,19 @@ export class ZoomCreditsService {
     ]);
 
     const totalCredited = aggregates
-      .filter((item) => item.type === ZoomCreditTransactionType.CREDIT || item.type === ZoomCreditTransactionType.TRANSFER_IN)
+      .filter(
+        (item) =>
+          item.type === ZoomCreditTransactionType.CREDIT ||
+          item.type === ZoomCreditTransactionType.TRANSFER_IN,
+      )
       .reduce((acc, item) => acc + (item._sum?.amount ?? 0), 0);
 
     const totalDebited = aggregates
-      .filter((item) => item.type === ZoomCreditTransactionType.DEBIT || item.type === ZoomCreditTransactionType.TRANSFER_OUT)
+      .filter(
+        (item) =>
+          item.type === ZoomCreditTransactionType.DEBIT ||
+          item.type === ZoomCreditTransactionType.TRANSFER_OUT,
+      )
       .reduce((acc, item) => acc + (item._sum?.amount ?? 0), 0);
 
     return new ZoomCreditSummaryEntity({
@@ -273,14 +323,18 @@ export class ZoomCreditsService {
     });
   }
 
-  private mapTransactionEntity(transaction: ZoomCreditTransaction): ZoomCreditTransactionEntity {
+  private mapTransactionEntity(
+    transaction: ZoomCreditTransaction,
+  ): ZoomCreditTransactionEntity {
     return new ZoomCreditTransactionEntity({
       ...transaction,
       metadata: this.toPlainMetadata(transaction.metadata),
     });
   }
 
-  private toInputJson(value?: Record<string, unknown> | null): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
+  private toInputJson(
+    value?: Record<string, unknown> | null,
+  ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
     if (value === undefined) {
       return undefined;
     }
@@ -290,7 +344,9 @@ export class ZoomCreditsService {
     return value as Prisma.InputJsonValue;
   }
 
-  private toPlainMetadata(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  private toPlainMetadata(
+    value: Prisma.JsonValue | null,
+  ): Record<string, unknown> | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
@@ -300,7 +356,15 @@ export class ZoomCreditsService {
   async getUsageTrend(
     userId: string,
     days: number,
-  ): Promise<{ days: number; series: Array<{ date: string; credited: number; debited: number; net: number }> }> {
+  ): Promise<{
+    days: number;
+    series: Array<{
+      date: string;
+      credited: number;
+      debited: number;
+      net: number;
+    }>;
+  }> {
     const safeDays = Math.min(Math.max(Math.floor(days || 30), 1), 365);
     const since = new Date();
     since.setUTCHours(0, 0, 0, 0);
@@ -324,7 +388,10 @@ export class ZoomCreditsService {
       const key = new Date(t.createdAt).toISOString().slice(0, 10);
       const bucket = buckets.get(key);
       if (!bucket) continue;
-      if (t.type === ZoomCreditTransactionType.CREDIT || t.type === ZoomCreditTransactionType.TRANSFER_IN) {
+      if (
+        t.type === ZoomCreditTransactionType.CREDIT ||
+        t.type === ZoomCreditTransactionType.TRANSFER_IN
+      ) {
         bucket.credited += t.amount;
       } else {
         bucket.debited += t.amount;
