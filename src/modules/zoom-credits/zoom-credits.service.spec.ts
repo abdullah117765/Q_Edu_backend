@@ -37,7 +37,9 @@ describe('ZoomCreditsService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    prismaMock.$transaction.mockImplementation(async (callback: any) => callback(txMock));
+    prismaMock.$transaction.mockImplementation(async (callback: any) =>
+      callback(txMock),
+    );
     service = new ZoomCreditsService(
       prismaMock as unknown as any,
       paymentsServiceMock as unknown as any,
@@ -46,7 +48,11 @@ describe('ZoomCreditsService', () => {
 
   it('credits balance when operation is credit', async () => {
     const now = new Date();
-    txMock.zoomCreditBalance.upsert.mockResolvedValueOnce({ userId: 'user-1', balance: 10, updatedAt: now });
+    txMock.zoomCreditBalance.upsert.mockResolvedValueOnce({
+      userId: 'user-1',
+      balance: 10,
+      updatedAt: now,
+    });
     txMock.zoomCreditBalance.update.mockResolvedValueOnce({});
     txMock.zoomCreditTransaction.create.mockResolvedValueOnce({
       id: 'tx-1',
@@ -78,14 +84,22 @@ describe('ZoomCreditsService', () => {
     });
     expect(txMock.zoomCreditTransaction.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ userId: 'user-1', amount: 5, runningBalance: 15 }),
+        data: expect.objectContaining({
+          userId: 'user-1',
+          amount: 5,
+          runningBalance: 15,
+        }),
       }),
     );
     expect(result.runningBalance).toBe(15);
   });
 
   it('throws when debiting more than available', async () => {
-    txMock.zoomCreditBalance.upsert.mockResolvedValueOnce({ userId: 'user-1', balance: 3, updatedAt: new Date() });
+    txMock.zoomCreditBalance.upsert.mockResolvedValueOnce({
+      userId: 'user-1',
+      balance: 3,
+      updatedAt: new Date(),
+    });
 
     await expect(
       service.adjustCredits(

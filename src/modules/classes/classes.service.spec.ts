@@ -6,9 +6,13 @@ import { ClassStatus } from './entities/class-status.enum';
 describe('ClassesService', () => {
   const prismaMock = {
     user: { findUnique: jest.fn() },
-    academy: { findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-1' }) },
+    academy: {
+      findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-1' }),
+    },
     academyMembership: {
-      findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED', role: 'TEACHER' }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ status: 'APPROVED', role: 'TEACHER' }),
     },
     class: {
       create: jest.fn(),
@@ -67,7 +71,9 @@ describe('ClassesService', () => {
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
 
-      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { id: 'teacher-1' } });
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'teacher-1' },
+      });
       expect(zoomServiceMock.createMeeting).not.toHaveBeenCalled();
     });
 
@@ -116,7 +122,12 @@ describe('ClassesService', () => {
       prismaMock.class.findUnique.mockResolvedValueOnce({
         ...baseClass,
         creditsConsumed: 15,
-        teacher: { id: 'teacher-1', firstName: 'Jane', lastName: 'Doe', email: 'teacher@example.com' },
+        teacher: {
+          id: 'teacher-1',
+          firstName: 'Jane',
+          lastName: 'Doe',
+          email: 'teacher@example.com',
+        },
         participants: [],
         _count: { participants: 0 },
       });
@@ -146,15 +157,23 @@ describe('ClassesService', () => {
         'class-1',
         {
           creditsConsumed: 15,
-          scheduledStart: new Date(baseClass.scheduledStart.getTime() + 60000).toISOString(),
-          scheduledEnd: new Date(baseClass.scheduledEnd.getTime() + 60000).toISOString(),
+          scheduledStart: new Date(
+            baseClass.scheduledStart.getTime() + 60000,
+          ).toISOString(),
+          scheduledEnd: new Date(
+            baseClass.scheduledEnd.getTime() + 60000,
+          ).toISOString(),
         },
         'actor-1',
         PrismaRole.SUPER_ADMIN,
       );
 
       expect(zoomCreditsServiceMock.adjustCredits).toHaveBeenCalledWith(
-        expect.objectContaining({ amount: 10, userId: 'teacher-1', classId: 'class-1' }),
+        expect.objectContaining({
+          amount: 10,
+          userId: 'teacher-1',
+          classId: 'class-1',
+        }),
         'actor-1',
       );
       expect(zoomServiceMock.updateMeeting).toHaveBeenCalledTimes(1);
