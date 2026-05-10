@@ -1,16 +1,25 @@
-import { Body, Controller, HttpCode, HttpStatus, Patch, Post, Req, Res } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import {
-  ApiBadRequestResponse,
-  ApiBearerAuth,
-  ApiBody,
-  ApiCreatedResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-  ApiUnauthorizedResponse,
-} from '@nestjs/swagger';
+    Body,
+    Controller,
+    HttpCode,
+    HttpStatus,
+    Patch,
+    Post,
+    Req,
+    Res,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+    ApiBadRequestResponse,
+    ApiBearerAuth,
+    ApiBody,
+    ApiCreatedResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiTags,
+    ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CookieOptions, Request, Response } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { CreateUserDto } from '../users/dto/create-user.dto';
@@ -41,7 +50,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: AuthResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Invalid credentials or account not approved' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid credentials or account not approved',
+  })
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -67,7 +78,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Resend the email verification OTP' })
   @ApiBody({ type: ResendRegistrationOtpDto })
   @ApiOkResponse({ type: MessageResponseDto })
-  resendOtp(@Body() dto: ResendRegistrationOtpDto): Promise<MessageResponseDto> {
+  resendOtp(
+    @Body() dto: ResendRegistrationOtpDto,
+  ): Promise<MessageResponseDto> {
     return this.authService.resendRegistrationOtp(dto);
   }
 
@@ -78,7 +91,9 @@ export class AuthController {
   @ApiBody({ type: VerifyRegistrationOtpDto })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired OTP' })
-  verifyOtp(@Body() dto: VerifyRegistrationOtpDto): Promise<MessageResponseDto> {
+  verifyOtp(
+    @Body() dto: VerifyRegistrationOtpDto,
+  ): Promise<MessageResponseDto> {
     return this.authService.verifyRegistrationOtp(dto);
   }
 
@@ -102,8 +117,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send an OTP to reset the account password' })
   @ApiBody({ type: ForgotPasswordDto })
-  @ApiOkResponse({ type: MessageResponseDto, description: 'OTP dispatched if the account exists' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'OTP dispatched if the account exists',
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.authService.forgotPassword(dto);
     return { message: 'OTP has been sent to the registered email.' };
   }
@@ -115,7 +135,9 @@ export class AuthController {
   @ApiBody({ type: ResetPasswordDto })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired OTP' })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<MessageResponseDto> {
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.authService.resetPassword(dto);
     return { message: 'Password has been reset successfully.' };
   }
@@ -127,7 +149,10 @@ export class AuthController {
   @ApiBody({ type: ChangePasswordDto })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
-  async changePassword(@Req() req: Request, @Body() dto: ChangePasswordDto): Promise<MessageResponseDto> {
+  async changePassword(
+    @Req() req: Request,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<MessageResponseDto> {
     const user = req['user'] as UserEntity;
     await this.authService.changePassword(user.id, dto);
     return { message: 'Password updated successfully.' };
@@ -152,14 +177,20 @@ export class AuthController {
 
   private setAuthCookies(res: Response, payload: AuthResponseDto): void {
     const accessTokenCookieName =
-      this.configService.get<string>('auth.accessTokenCookieName') ?? 'qedu_access_token';
+      this.configService.get<string>('auth.accessTokenCookieName') ??
+      'qedu_access_token';
     const refreshTokenCookieName =
-      this.configService.get<string>('auth.refreshTokenCookieName') ?? 'qedu_refresh_token';
+      this.configService.get<string>('auth.refreshTokenCookieName') ??
+      'qedu_refresh_token';
 
     const accessTokenMaxAge = this.authService.getAccessTokenTtlMs();
     const refreshTokenMaxAge = this.authService.getRefreshTokenTtlMs();
 
-    res.cookie(accessTokenCookieName, payload.accessToken, this.buildCookieOptions(accessTokenMaxAge));
+    res.cookie(
+      accessTokenCookieName,
+      payload.accessToken,
+      this.buildCookieOptions(accessTokenMaxAge),
+    );
     res.cookie(
       refreshTokenCookieName,
       payload.refreshToken,
@@ -169,9 +200,11 @@ export class AuthController {
 
   private clearAuthCookies(res: Response): void {
     const accessTokenCookieName =
-      this.configService.get<string>('auth.accessTokenCookieName') ?? 'qedu_access_token';
+      this.configService.get<string>('auth.accessTokenCookieName') ??
+      'qedu_access_token';
     const refreshTokenCookieName =
-      this.configService.get<string>('auth.refreshTokenCookieName') ?? 'qedu_refresh_token';
+      this.configService.get<string>('auth.refreshTokenCookieName') ??
+      'qedu_refresh_token';
 
     const baseOptions = this.buildCookieOptions(0);
     res.clearCookie(accessTokenCookieName, baseOptions);
@@ -180,9 +213,11 @@ export class AuthController {
 
   private buildCookieOptions(maxAge: number): CookieOptions {
     const secure = this.configService.get<boolean>('auth.cookieSecure') ?? true;
-    const sameSite = (this.configService.get<string>('auth.cookieSameSite') ?? 'lax') as
-      | CookieOptions['sameSite'];
-    const domain = this.configService.get<string | undefined>('auth.cookieDomain') ?? undefined;
+    const sameSite = (this.configService.get<string>('auth.cookieSameSite') ??
+      'lax') as CookieOptions['sameSite'];
+    const domain =
+      this.configService.get<string | undefined>('auth.cookieDomain') ??
+      undefined;
 
     const options: CookieOptions = {
       httpOnly: true,
@@ -201,4 +236,3 @@ export class AuthController {
     return options;
   }
 }
-

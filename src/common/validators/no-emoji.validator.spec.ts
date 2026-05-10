@@ -1,5 +1,5 @@
 import { validate } from 'class-validator';
-import { NoEmoji, EMOJI_REGEX } from './no-emoji.validator';
+import { EMOJI_REGEX, NoEmoji } from './no-emoji.validator';
 
 class Sample {
   @NoEmoji()

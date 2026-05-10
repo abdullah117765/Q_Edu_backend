@@ -1,22 +1,24 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
-import { json, raw } from 'express';
+import { raw } from 'express';
+import { join } from 'path';
+import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
-import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
-import { join } from 'path';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const cookieParser = require('cookie-parser');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const helmet = require('helmet');
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: false,
+  });
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
@@ -31,9 +33,12 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   if (storageConfig?.driver === 'local') {
-    const localRoot = storageConfig.local?.root ?? join(process.cwd(), 'storage', 'uploads');
+    const localRoot =
+      storageConfig.local?.root ?? join(process.cwd(), 'storage', 'uploads');
     const serveRoot = storageConfig.publicServeRoot ?? '/storage';
-    const normalizedPrefix = serveRoot.startsWith('/') ? serveRoot : `/${serveRoot}`;
+    const normalizedPrefix = serveRoot.startsWith('/')
+      ? serveRoot
+      : `/${serveRoot}`;
     const prefixWithTrailingSlash = normalizedPrefix.endsWith('/')
       ? normalizedPrefix
       : `${normalizedPrefix}/`;
@@ -41,9 +46,16 @@ async function bootstrap() {
       prefix: prefixWithTrailingSlash,
     });
   }
-  const configuredOrigins = configService.get<string[]>('cors.allowedOrigins') ?? [];
-  const defaultDevOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'];
-  const allowedOrigins = configuredOrigins.length > 0 ? configuredOrigins : defaultDevOrigins;
+  const configuredOrigins =
+    configService.get<string[]>('cors.allowedOrigins') ?? [];
+  const defaultDevOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ];
+  const allowedOrigins =
+    configuredOrigins.length > 0 ? configuredOrigins : defaultDevOrigins;
   const allowAllOrigins = allowedOrigins.includes('*');
   const corsOptions: CorsOptions = {
     origin: (origin, callback) => {
@@ -55,7 +67,10 @@ async function bootstrap() {
       if (allowAllOrigins || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`Origin ${origin} is not allowed by CORS policy`), false);
+        callback(
+          new Error(`Origin ${origin} is not allowed by CORS policy`),
+          false,
+        );
       }
     },
     credentials: true,
@@ -66,12 +81,16 @@ async function bootstrap() {
   app.enableCors(corsOptions);
   app.use(cookieParser());
   // Stripe webhook needs the raw body to verify signatures.
-  app.use('/api/billing/webhook', raw({ type: 'application/json', limit: '1mb' }), (req: any, _res: any, next: any) => {
-    if (Buffer.isBuffer(req.body)) {
-      req.rawBody = req.body;
-    }
-    next();
-  });
+  app.use(
+    '/api/billing/webhook',
+    raw({ type: 'application/json', limit: '1mb' }),
+    (req: any, _res: any, next: any) => {
+      if (Buffer.isBuffer(req.body)) {
+        req.rawBody = req.body;
+      }
+      next();
+    },
+  );
   app.use(
     helmet({
       contentSecurityPolicy: false,
