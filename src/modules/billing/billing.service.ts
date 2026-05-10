@@ -512,7 +512,13 @@ export class BillingService {
       where: { id },
       include: {
         user: {
-          select: { id: true, email: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
         },
         package: true,
         subscription: { include: { plan: true } },
@@ -529,7 +535,9 @@ export class BillingService {
       throw new BadRequestException('Payment is already refunded.');
     }
     if (payment.provider !== 'stripe' || !payment.reference) {
-      throw new BadRequestException('Only Stripe-tracked payments can be refunded automatically.');
+      throw new BadRequestException(
+        'Only Stripe-tracked payments can be refunded automatically.',
+      );
     }
     if (this.stripe.isEnabled()) {
       try {
@@ -544,18 +552,26 @@ export class BillingService {
           amountCents,
         });
       } catch (err) {
-        this.logger.warn(`Stripe refund failed for payment ${id}: ${(err as Error).message}`);
-        throw new BadRequestException(`Stripe refund failed: ${(err as Error).message}`);
+        this.logger.warn(
+          `Stripe refund failed for payment ${id}: ${(err as Error).message}`,
+        );
+        throw new BadRequestException(
+          `Stripe refund failed: ${(err as Error).message}`,
+        );
       }
     }
     return this.prisma.payment.update({
       where: { id },
       data: {
-        status: amountCents && amountCents < Number(payment.amount) * 100 ? 'partially_refunded' : 'refunded',
+        status:
+          amountCents && amountCents < Number(payment.amount) * 100
+            ? 'partially_refunded'
+            : 'refunded',
         metadata: {
           ...((payment.metadata as Record<string, unknown> | null) ?? {}),
           refundedAt: new Date().toISOString(),
-          refundedAmountCents: amountCents ?? Math.round(Number(payment.amount) * 100),
+          refundedAmountCents:
+            amountCents ?? Math.round(Number(payment.amount) * 100),
         },
       },
     });
@@ -580,7 +596,13 @@ export class BillingService {
         take: limit,
         include: {
           user: {
-            select: { id: true, email: true, firstName: true, lastName: true, role: true },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
           },
           plan: true,
         },
@@ -595,9 +617,14 @@ export class BillingService {
     if (!sub) throw new NotFoundException('Subscription not found.');
     if (sub.stripeSubscriptionId) {
       try {
-        await this.stripe.cancelSubscription(sub.stripeSubscriptionId, !immediate);
+        await this.stripe.cancelSubscription(
+          sub.stripeSubscriptionId,
+          !immediate,
+        );
       } catch (err) {
-        this.logger.warn(`Stripe cancel failed for sub ${id}: ${(err as Error).message}`);
+        this.logger.warn(
+          `Stripe cancel failed for sub ${id}: ${(err as Error).message}`,
+        );
       }
     }
     return this.prisma.subscription.update({
@@ -764,10 +791,14 @@ export class BillingService {
         await this.coupons.recordRedemption({
           couponId: meta.couponId,
           userId,
-          amountOffCents: meta.discountCents ? Number(meta.discountCents) : undefined,
+          amountOffCents: meta.discountCents
+            ? Number(meta.discountCents)
+            : undefined,
         });
       } catch (err) {
-        this.logger.warn(`Failed to record coupon redemption: ${(err as Error).message}`);
+        this.logger.warn(
+          `Failed to record coupon redemption: ${(err as Error).message}`,
+        );
       }
     }
   }

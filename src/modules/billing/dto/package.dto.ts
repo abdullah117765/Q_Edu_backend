@@ -1,7 +1,16 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { ZoomCreditPackageBillingType } from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+    IsBoolean,
+    IsEnum,
+    IsInt,
+    IsOptional,
+    IsString,
+    Length,
+    Max,
+    Min,
+} from 'class-validator';
 
 export class CreatePackageDto {
   @ApiProperty({ example: 'Starter', maxLength: 80 })
@@ -15,14 +24,21 @@ export class CreatePackageDto {
   @Length(0, 280)
   description?: string;
 
-  @ApiProperty({ example: 100, minimum: 1, description: 'Number of credits granted' })
+  @ApiProperty({
+    example: 100,
+    minimum: 1,
+    description: 'Number of credits granted',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(1_000_000)
   credits!: number;
 
-  @ApiProperty({ example: 1000, description: 'Price in the smallest currency unit (cents)' })
+  @ApiProperty({
+    example: 1000,
+    description: 'Price in the smallest currency unit (cents)',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -40,7 +56,11 @@ export class CreatePackageDto {
   @IsEnum(ZoomCreditPackageBillingType)
   billingType?: ZoomCreditPackageBillingType;
 
-  @ApiPropertyOptional({ example: 0, minimum: 0, description: 'Bonus credits added on top' })
+  @ApiPropertyOptional({
+    example: 0,
+    minimum: 0,
+    description: 'Bonus credits added on top',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

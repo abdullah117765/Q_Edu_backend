@@ -1,5 +1,16 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Coupon, CouponAppliesTo, CouponDiscountType, CouponDuration, Prisma } from '@prisma/client';
+import {
+    BadRequestException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
+import {
+    Coupon,
+    CouponAppliesTo,
+    CouponDiscountType,
+    CouponDuration,
+    Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { CreateCouponDto, UpdateCouponDto } from './dto/coupon.dto';
@@ -31,21 +42,33 @@ export class CouponsService {
         { OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] },
       ];
     }
-    return this.prisma.coupon.findMany({ where, orderBy: [{ createdAt: 'desc' }] });
+    return this.prisma.coupon.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }],
+    });
   }
 
   async create(dto: CreateCouponDto): Promise<Coupon> {
     this.validateDiscountShape(dto);
-    const exists = await this.prisma.coupon.findUnique({ where: { code: dto.code.toUpperCase() } });
-    if (exists) throw new BadRequestException(`Coupon code ${dto.code} already exists.`);
+    const exists = await this.prisma.coupon.findUnique({
+      where: { code: dto.code.toUpperCase() },
+    });
+    if (exists)
+      throw new BadRequestException(`Coupon code ${dto.code} already exists.`);
     let stripeCouponId: string | null = null;
     let stripePromotionCodeId: string | null = null;
     if (this.stripe.isEnabled()) {
       try {
         const sCoupon = await this.stripe.createCoupon({
           name: dto.name,
-          percentOff: dto.discountType === CouponDiscountType.PERCENT ? dto.percentOff : undefined,
-          amountOffCents: dto.discountType === CouponDiscountType.AMOUNT ? dto.amountOffCents : undefined,
+          percentOff:
+            dto.discountType === CouponDiscountType.PERCENT
+              ? dto.percentOff
+              : undefined,
+          amountOffCents:
+            dto.discountType === CouponDiscountType.AMOUNT
+              ? dto.amountOffCents
+              : undefined,
           currency: dto.currency,
           duration: dto.duration ?? CouponDuration.ONCE,
           durationMonths: dto.durationMonths,
@@ -62,7 +85,9 @@ export class CouponsService {
         });
         stripePromotionCodeId = sPromo.id;
       } catch (err) {
-        this.logger.warn(`Stripe coupon sync failed: ${(err as Error).message}`);
+        this.logger.warn(
+          `Stripe coupon sync failed: ${(err as Error).message}`,
+        );
       }
     }
     return this.prisma.coupon.create({
@@ -94,26 +119,47 @@ export class CouponsService {
     const existing = await this.prisma.coupon.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Coupon not found.');
     // For Stripe-managed fields (percent/amount/duration) we don't mutate Stripe; warn instead.
-    if (this.stripe.isEnabled() && existing.stripePromotionCodeId && dto.active !== undefined && dto.active !== existing.active) {
+    if (
+      this.stripe.isEnabled() &&
+      existing.stripePromotionCodeId &&
+      dto.active !== undefined &&
+      dto.active !== existing.active
+    ) {
       try {
-        await this.stripe.updatePromotionCode(existing.stripePromotionCodeId, { active: dto.active });
+        await this.stripe.updatePromotionCode(existing.stripePromotionCodeId, {
+          active: dto.active,
+        });
       } catch (err) {
-        this.logger.warn(`Failed to update Stripe promotion code state: ${(err as Error).message}`);
+        this.logger.warn(
+          `Failed to update Stripe promotion code state: ${(err as Error).message}`,
+        );
       }
     }
     return this.prisma.coupon.update({
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
         ...(dto.appliesTo !== undefined ? { appliesTo: dto.appliesTo } : {}),
-        ...(dto.maxRedemptions !== undefined ? { maxRedemptions: dto.maxRedemptions } : {}),
-        ...(dto.startsAt !== undefined ? { startsAt: dto.startsAt ? new Date(dto.startsAt) : null } : {}),
-        ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null } : {}),
+        ...(dto.maxRedemptions !== undefined
+          ? { maxRedemptions: dto.maxRedemptions }
+          : {}),
+        ...(dto.startsAt !== undefined
+          ? { startsAt: dto.startsAt ? new Date(dto.startsAt) : null }
+          : {}),
+        ...(dto.expiresAt !== undefined
+          ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }
+          : {}),
         ...(dto.active !== undefined ? { active: dto.active } : {}),
         ...(dto.highlight !== undefined ? { highlight: dto.highlight } : {}),
-        ...(dto.marketingTitle !== undefined ? { marketingTitle: dto.marketingTitle } : {}),
-        ...(dto.marketingBody !== undefined ? { marketingBody: dto.marketingBody } : {}),
+        ...(dto.marketingTitle !== undefined
+          ? { marketingTitle: dto.marketingTitle }
+          : {}),
+        ...(dto.marketingBody !== undefined
+          ? { marketingBody: dto.marketingBody }
+          : {}),
       },
     });
   }
@@ -125,9 +171,13 @@ export class CouponsService {
     await this.prisma.coupon.update({ where: { id }, data: { active: false } });
     if (this.stripe.isEnabled() && existing.stripePromotionCodeId) {
       try {
-        await this.stripe.updatePromotionCode(existing.stripePromotionCodeId, { active: false });
+        await this.stripe.updatePromotionCode(existing.stripePromotionCodeId, {
+          active: false,
+        });
       } catch (err) {
-        this.logger.warn(`Failed to deactivate Stripe promotion code: ${(err as Error).message}`);
+        this.logger.warn(
+          `Failed to deactivate Stripe promotion code: ${(err as Error).message}`,
+        );
       }
     }
   }
@@ -144,36 +194,67 @@ export class CouponsService {
     grossCents: number;
   }): Promise<ResolvedCoupon | null> {
     if (!opts.code) return null;
-    const coupon = await this.prisma.coupon.findUnique({ where: { code: opts.code.toUpperCase() } });
+    const coupon = await this.prisma.coupon.findUnique({
+      where: { code: opts.code.toUpperCase() },
+    });
     if (!coupon) throw new BadRequestException('Coupon code not found.');
     if (!coupon.active) throw new BadRequestException('Coupon is inactive.');
     const now = new Date();
-    if (coupon.startsAt && coupon.startsAt > now) throw new BadRequestException('Coupon is not yet active.');
-    if (coupon.expiresAt && coupon.expiresAt < now) throw new BadRequestException('Coupon has expired.');
-    if (coupon.maxRedemptions && coupon.timesRedeemed >= coupon.maxRedemptions) {
+    if (coupon.startsAt && coupon.startsAt > now)
+      throw new BadRequestException('Coupon is not yet active.');
+    if (coupon.expiresAt && coupon.expiresAt < now)
+      throw new BadRequestException('Coupon has expired.');
+    if (
+      coupon.maxRedemptions &&
+      coupon.timesRedeemed >= coupon.maxRedemptions
+    ) {
       throw new BadRequestException('Coupon redemption limit reached.');
     }
-    if (coupon.appliesTo === CouponAppliesTo.PACKAGES && opts.appliesToKind !== 'package') {
-      throw new BadRequestException('Coupon is only valid for credit packages.');
+    if (
+      coupon.appliesTo === CouponAppliesTo.PACKAGES &&
+      opts.appliesToKind !== 'package'
+    ) {
+      throw new BadRequestException(
+        'Coupon is only valid for credit packages.',
+      );
     }
-    if (coupon.appliesTo === CouponAppliesTo.PLANS && opts.appliesToKind !== 'plan') {
-      throw new BadRequestException('Coupon is only valid for subscription plans.');
+    if (
+      coupon.appliesTo === CouponAppliesTo.PLANS &&
+      opts.appliesToKind !== 'plan'
+    ) {
+      throw new BadRequestException(
+        'Coupon is only valid for subscription plans.',
+      );
     }
     const discountCents = this.calculateDiscount(coupon, opts.grossCents);
     return { coupon, discountCents, appliesToKind: opts.appliesToKind };
   }
 
   calculateDiscount(coupon: Coupon, grossCents: number): number {
-    if (coupon.discountType === CouponDiscountType.PERCENT && coupon.percentOff) {
-      return Math.min(grossCents, Math.round((grossCents * coupon.percentOff) / 100));
+    if (
+      coupon.discountType === CouponDiscountType.PERCENT &&
+      coupon.percentOff
+    ) {
+      return Math.min(
+        grossCents,
+        Math.round((grossCents * coupon.percentOff) / 100),
+      );
     }
-    if (coupon.discountType === CouponDiscountType.AMOUNT && coupon.amountOffCents) {
+    if (
+      coupon.discountType === CouponDiscountType.AMOUNT &&
+      coupon.amountOffCents
+    ) {
       return Math.min(grossCents, coupon.amountOffCents);
     }
     return 0;
   }
 
-  async recordRedemption(opts: { couponId: string; userId?: string; paymentId?: string; amountOffCents?: number }) {
+  async recordRedemption(opts: {
+    couponId: string;
+    userId?: string;
+    paymentId?: string;
+    amountOffCents?: number;
+  }) {
     await this.prisma.$transaction([
       this.prisma.couponRedemption.create({
         data: {
@@ -192,13 +273,19 @@ export class CouponsService {
 
   private validateDiscountShape(dto: CreateCouponDto) {
     if (dto.discountType === CouponDiscountType.PERCENT && !dto.percentOff) {
-      throw new BadRequestException('percentOff is required for PERCENT coupons.');
+      throw new BadRequestException(
+        'percentOff is required for PERCENT coupons.',
+      );
     }
     if (dto.discountType === CouponDiscountType.AMOUNT && !dto.amountOffCents) {
-      throw new BadRequestException('amountOffCents is required for AMOUNT coupons.');
+      throw new BadRequestException(
+        'amountOffCents is required for AMOUNT coupons.',
+      );
     }
     if (dto.duration === CouponDuration.REPEATING && !dto.durationMonths) {
-      throw new BadRequestException('durationMonths is required for REPEATING coupons.');
+      throw new BadRequestException(
+        'durationMonths is required for REPEATING coupons.',
+      );
     }
   }
 }

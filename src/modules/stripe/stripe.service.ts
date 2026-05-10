@@ -2,7 +2,7 @@ import {
     Injectable,
     Logger,
     OnModuleInit,
-    ServiceUnavailableException
+    ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -169,7 +169,9 @@ export class StripeService implements OnModuleInit {
       line_items: lineItems,
       payment_method_types: ['card'],
       allow_promotion_codes: !params.discountCouponId,
-      discounts: params.discountCouponId ? [{ coupon: params.discountCouponId }] : undefined,
+      discounts: params.discountCouponId
+        ? [{ coupon: params.discountCouponId }]
+        : undefined,
       success_url: params.successUrl ?? this.config.successUrl,
       cancel_url: params.cancelUrl ?? this.config.cancelUrl,
       metadata: params.metadata,
@@ -274,11 +276,19 @@ export class StripeService implements OnModuleInit {
       name: params.name,
       percent_off: params.percentOff,
       amount_off: params.amountOffCents,
-      currency: params.amountOffCents ? (params.currency ?? this.config.currency).toLowerCase() : undefined,
-      duration: params.duration.toLowerCase() as 'once' | 'repeating' | 'forever',
-      duration_in_months: params.duration === 'REPEATING' ? params.durationMonths : undefined,
+      currency: params.amountOffCents
+        ? (params.currency ?? this.config.currency).toLowerCase()
+        : undefined,
+      duration: params.duration.toLowerCase() as
+        | 'once'
+        | 'repeating'
+        | 'forever',
+      duration_in_months:
+        params.duration === 'REPEATING' ? params.durationMonths : undefined,
       max_redemptions: params.maxRedemptions,
-      redeem_by: params.redeemBy ? Math.floor(params.redeemBy.getTime() / 1000) : undefined,
+      redeem_by: params.redeemBy
+        ? Math.floor(params.redeemBy.getTime() / 1000)
+        : undefined,
     });
   }
 
@@ -294,7 +304,9 @@ export class StripeService implements OnModuleInit {
       coupon: params.couponId,
       code: params.code,
       max_redemptions: params.maxRedemptions,
-      expires_at: params.expiresAt ? Math.floor(params.expiresAt.getTime() / 1000) : undefined,
+      expires_at: params.expiresAt
+        ? Math.floor(params.expiresAt.getTime() / 1000)
+        : undefined,
       active: params.active ?? true,
     });
   }
@@ -315,14 +327,18 @@ export class StripeService implements OnModuleInit {
     const stripe = this.getClient();
     let paymentIntent = params.paymentIntentId;
     if (!paymentIntent && params.checkoutSessionId) {
-      const session = await stripe.checkout.sessions.retrieve(params.checkoutSessionId);
+      const session = await stripe.checkout.sessions.retrieve(
+        params.checkoutSessionId,
+      );
       paymentIntent =
         typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id;
     }
     if (!paymentIntent) {
-      throw new ServiceUnavailableException('No payment intent available for refund.');
+      throw new ServiceUnavailableException(
+        'No payment intent available for refund.',
+      );
     }
     return stripe.refunds.create({
       payment_intent: paymentIntent,

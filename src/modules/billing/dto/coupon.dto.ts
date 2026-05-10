@@ -1,21 +1,21 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+    CouponAppliesTo,
+    CouponDiscountType,
+    CouponDuration,
+} from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
-  IsBoolean,
-  IsDateString,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  Length,
-  Max,
-  Min,
+    IsBoolean,
+    IsDateString,
+    IsEnum,
+    IsInt,
+    IsOptional,
+    IsString,
+    Length,
+    Max,
+    Min,
 } from 'class-validator';
-import {
-  CouponAppliesTo,
-  CouponDiscountType,
-  CouponDuration,
-} from '@prisma/client';
 
 export class CreateCouponDto {
   @ApiProperty({ example: 'LAUNCH25', maxLength: 32 })
@@ -38,7 +38,9 @@ export class CreateCouponDto {
   @IsEnum(CouponDiscountType)
   discountType!: CouponDiscountType;
 
-  @ApiPropertyOptional({ description: 'Required when discountType=PERCENT, 1-100' })
+  @ApiPropertyOptional({
+    description: 'Required when discountType=PERCENT, 1-100',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -46,7 +48,9 @@ export class CreateCouponDto {
   @Max(100)
   percentOff?: number;
 
-  @ApiPropertyOptional({ description: 'Required when discountType=AMOUNT, in minor units (cents)' })
+  @ApiPropertyOptional({
+    description: 'Required when discountType=AMOUNT, in minor units (cents)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -84,7 +88,9 @@ export class CreateCouponDto {
   @Min(1)
   maxRedemptions?: number;
 
-  @ApiPropertyOptional({ description: 'ISO date when the coupon becomes valid' })
+  @ApiPropertyOptional({
+    description: 'ISO date when the coupon becomes valid',
+  })
   @IsOptional()
   @IsDateString()
   startsAt?: string;
@@ -104,13 +110,17 @@ export class CreateCouponDto {
   @IsBoolean()
   highlight?: boolean;
 
-  @ApiPropertyOptional({ description: 'Title shown to academy owners on the marketing banner' })
+  @ApiPropertyOptional({
+    description: 'Title shown to academy owners on the marketing banner',
+  })
   @IsOptional()
   @IsString()
   @Length(0, 80)
   marketingTitle?: string;
 
-  @ApiPropertyOptional({ description: 'Body text shown alongside the marketing banner' })
+  @ApiPropertyOptional({
+    description: 'Body text shown alongside the marketing banner',
+  })
   @IsOptional()
   @IsString()
   @Length(0, 280)

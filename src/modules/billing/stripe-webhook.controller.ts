@@ -1,9 +1,16 @@
-import { Controller, Headers, HttpCode, Logger, Post, Req } from '@nestjs/common';
+import {
+    Controller,
+    Headers,
+    HttpCode,
+    Logger,
+    Post,
+    Req,
+} from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import { BillingService } from './billing.service';
 import { StripeService } from '../stripe/stripe.service';
+import { BillingService } from './billing.service';
 
 /**
  * Stripe webhook receiver.
@@ -32,20 +39,26 @@ export class StripeWebhookController {
     }
     const raw = req.rawBody ?? (req.body as unknown as Buffer);
     if (!raw || !(raw instanceof Buffer)) {
-      this.logger.error('Webhook raw body is missing - check express.raw mounting');
+      this.logger.error(
+        'Webhook raw body is missing - check express.raw mounting',
+      );
       return { received: false };
     }
     let event;
     try {
       event = this.stripe.constructEvent(raw, signature);
     } catch (err) {
-      this.logger.warn(`Webhook signature verification failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Webhook signature verification failed: ${(err as Error).message}`,
+      );
       return { received: false };
     }
     try {
       await this.billing.handleStripeEvent(event);
     } catch (err) {
-      this.logger.error(`Error handling event ${event.id}: ${(err as Error).message}`);
+      this.logger.error(
+        `Error handling event ${event.id}: ${(err as Error).message}`,
+      );
       // Return 500 so Stripe retries
       throw err;
     }
