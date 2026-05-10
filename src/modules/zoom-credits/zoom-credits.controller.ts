@@ -71,4 +71,15 @@ export class ZoomCreditsController {
   ): Promise<PaginatedZoomCreditTransactionsResponseDto> {
     return this.zoomCreditsService.getTransactions(userId, query);
   }
+
+  @Get('me/usage-trend')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @ApiOperation({ summary: 'Daily credit usage trend for the authenticated user' })
+  async getMyUsageTrend(
+    @Req() request: Request,
+    @Query('days') days?: string,
+  ) {
+    const userId = (request as RequestWithUser).user?.id as string;
+    return this.zoomCreditsService.getUsageTrend(userId, days ? Number(days) : 30);
+  }
 }

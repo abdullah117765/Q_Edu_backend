@@ -296,4 +296,49 @@ export class ZoomCreditsService {
     }
     return value as Record<string, unknown>;
   }
+
+  async getUsageTrend(
+    userId: string,
+    days: number,
+  ): Promise<{ days: number; series: Array<{ date: string; credited: number; debited: number; net: number }> }> {
+    const safeDays = Math.min(Math.max(Math.floor(days || 30), 1), 365);
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (safeDays - 1));
+
+    const txns = await this.prisma.zoomCreditTransaction.findMany({
+      where: { userId, createdAt: { gte: since } },
+      select: { type: true, amount: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const buckets = new Map<string, { credited: number; debited: number }>();
+    for (let i = 0; i < safeDays; i++) {
+      const d = new Date(since);
+      d.setUTCDate(since.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets.set(key, { credited: 0, debited: 0 });
+    }
+
+    for (const t of txns) {
+      const key = new Date(t.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets.get(key);
+      if (!bucket) continue;
+      if (t.type === ZoomCreditTransactionType.CREDIT || t.type === ZoomCreditTransactionType.TRANSFER_IN) {
+        bucket.credited += t.amount;
+      } else {
+        bucket.debited += t.amount;
+      }
+    }
+
+    return {
+      days: safeDays,
+      series: Array.from(buckets.entries()).map(([date, v]) => ({
+        date,
+        credited: v.credited,
+        debited: v.debited,
+        net: v.credited - v.debited,
+      })),
+    };
+  }
 }
