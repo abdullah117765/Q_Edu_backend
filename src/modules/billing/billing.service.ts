@@ -495,6 +495,7 @@ export class BillingService {
     page?: number;
     limit?: number;
     status?: string;
+    provider?: string;
     userId?: string;
     packageId?: string;
     subscriptionId?: string;
@@ -505,6 +506,7 @@ export class BillingService {
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
     const where: Prisma.PaymentWhereInput = {};
     if (opts.status) where.status = opts.status;
+    if (opts.provider) where.provider = opts.provider;
     if (opts.userId) where.userId = opts.userId;
     if (opts.packageId) where.packageId = opts.packageId;
     if (opts.subscriptionId) where.subscriptionId = opts.subscriptionId;
