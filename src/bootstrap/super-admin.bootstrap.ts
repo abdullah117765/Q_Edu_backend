@@ -68,7 +68,9 @@ export class SuperAdminBootstrap implements OnApplicationBootstrap {
           isActive: true,
         },
       });
-      this.logger.log(`Promoted existing user ${cfg.email} to active super admin.`);
+      this.logger.log(
+        `Promoted existing user ${cfg.email} to active super admin.`,
+      );
     } else {
       this.logger.log(`Super admin ${cfg.email} present - no changes.`);
     }
