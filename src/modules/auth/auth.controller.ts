@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Patch, Post, Req, Res } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -36,6 +37,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: AuthResponseDto })
@@ -50,6 +52,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Register a new user account' })
   @ApiBody({ type: CreateUserDto })
   @ApiCreatedResponse({ type: MessageResponseDto })
@@ -59,6 +62,7 @@ export class AuthController {
   }
 
   @Post('resend-otp')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend the email verification OTP' })
   @ApiBody({ type: ResendRegistrationOtpDto })
@@ -68,6 +72,7 @@ export class AuthController {
   }
 
   @Post('verify-otp')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify the email OTP to activate the account' })
   @ApiBody({ type: VerifyRegistrationOtpDto })
@@ -93,6 +98,7 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send an OTP to reset the account password' })
   @ApiBody({ type: ForgotPasswordDto })
@@ -103,6 +109,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset the password using an OTP' })
   @ApiBody({ type: ResetPasswordDto })
