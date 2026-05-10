@@ -1,53 +1,53 @@
 ﻿import {
-  Body,
-  Controller,
-  Delete,
-  ForbiddenException,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
-  UploadedFile,
-  UseInterceptors,
-  ParseFilePipe,
-  FileTypeValidator,
-  MaxFileSizeValidator,
+    Body,
+    Controller,
+    Delete,
+    FileTypeValidator,
+    ForbiddenException,
+    Get,
+    MaxFileSizeValidator,
+    Param,
+    ParseFilePipe,
+    Patch,
+    Post,
+    Query,
+    Req,
+    UploadedFile,
+    UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiBadRequestResponse,
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiCreatedResponse,
-  ApiNotFoundResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiParam,
-  ApiTags,
+    ApiBadRequestResponse,
+    ApiBearerAuth,
+    ApiBody,
+    ApiConsumes,
+    ApiCreatedResponse,
+    ApiNotFoundResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiParam,
+    ApiTags,
 } from '@nestjs/swagger';
 import { Request } from 'express';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { memoryStorage } from 'multer';
 import { Auth } from '../../common/decorators/auth.decorator';
+import { UploadedFile as UploadedFileType } from '../../common/interfaces/uploaded-file.interface';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
+import { AdminsQueryDto } from './dto/admins-query.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { CreateTeacherDto } from './dto/create-teacher.dto';
-import { AdminsQueryDto } from './dto/admins-query.dto';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { StudentsQueryDto } from './dto/students-query.dto';
 import { TeachersQueryDto } from './dto/teachers-query.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UsersDirectoryQueryDto } from './dto/users-directory-query.dto';
 import { Role } from './entities/role.enum';
-import { UserEntity } from './entities/user.entity';
 import { UserStatus } from './entities/user-status.enum';
+import { UserEntity } from './entities/user.entity';
 import { UsersService } from './users.service';
-import { UploadedFile as UploadedFileType } from '../../common/interfaces/uploaded-file.interface';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -85,7 +85,10 @@ export class UsersController {
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
   findAdmins(@Query() query: AdminsQueryDto, @Req() request: Request) {
     const currentUser = request['user'] as UserEntity | undefined;
-    return this.usersService.findAdmins(query, currentUser ? { id: currentUser.id, role: currentUser.role } : undefined);
+    return this.usersService.findAdmins(
+      query,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Get('teachers')
@@ -107,24 +110,46 @@ export class UsersController {
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'List students with pagination and filters' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findStudents(@Query() query: StudentsQueryDto, @Req() request: Request) {
+  async findStudents(
+    @Query() query: StudentsQueryDto,
+    @Req() request: Request,
+  ) {
     const currentUser = request['user'] as UserEntity | undefined;
     if (currentUser?.role === Role.TEACHER && !query.status) {
       query.status = UserStatus.APPROVED;
     }
-    return this.usersService.findStudents(
+    const result = await this.usersService.findStudents(
       query,
       currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
     );
+
+    if (currentUser?.role === Role.TEACHER) {
+      result.data = result.data.map((user) => ({
+        ...user,
+        email: this.maskEmail(user.email),
+      })) as typeof result.data;
+    }
+    return result;
+  }
+
+  private maskEmail(email?: string | null): string | null {
+    if (!email) return email ?? null;
+    const [local, domain] = email.split('@');
+    if (!domain) return email;
+    if (local.length <= 1) return `${local}***@${domain}`;
+    return `${local[0]}***@${domain}`;
   }
 
   @Get()
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'List users with pagination' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findAll(@Query() query: PaginationQueryDto, @Req() request: Request) {
+  findAll(@Query() query: UsersDirectoryQueryDto, @Req() request: Request) {
     const currentUser = request['user'] as UserEntity | undefined;
-    return this.usersService.findAll(query, currentUser ? { id: currentUser.id, role: currentUser.role } : undefined);
+    return this.usersService.findAll(
+      query,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Get('me')
@@ -173,12 +198,18 @@ export class UsersController {
   @ApiOperation({ summary: 'Retrieve a single user' })
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiOkResponse({ type: UserEntity })
-  @ApiNotFoundResponse({ description: 'User with the specified id was not found.' })
+  @ApiNotFoundResponse({
+    description: 'User with the specified id was not found.',
+  })
   findOne(@Param('id') id: string, @Req() request: Request) {
     const currentUser = request['user'] as UserEntity | undefined;
     const elevatedRoles: Role[] = [Role.SUPER_ADMIN, Role.ACADEMY_OWNER];
 
-    if (currentUser && !elevatedRoles.includes(currentUser.role) && currentUser.id !== id) {
+    if (
+      currentUser &&
+      !elevatedRoles.includes(currentUser.role) &&
+      currentUser.id !== id
+    ) {
       throw new ForbiddenException('You can only view your own profile.');
     }
 
@@ -194,7 +225,9 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiBody({ type: UpdateUserDto })
   @ApiOkResponse({ type: UserEntity })
-  @ApiNotFoundResponse({ description: 'User with the specified id was not found.' })
+  @ApiNotFoundResponse({
+    description: 'User with the specified id was not found.',
+  })
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
@@ -205,8 +238,12 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiBody({ type: UpdateUserStatusDto })
   @ApiOkResponse({ type: UserEntity })
-  @ApiBadRequestResponse({ description: 'Missing rejection reason when rejecting' })
-  @ApiNotFoundResponse({ description: 'User with the specified id was not found.' })
+  @ApiBadRequestResponse({
+    description: 'Missing rejection reason when rejecting',
+  })
+  @ApiNotFoundResponse({
+    description: 'User with the specified id was not found.',
+  })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {
     return this.usersService.updateStatus(id, dto);
   }
@@ -216,11 +253,11 @@ export class UsersController {
   @ApiOperation({ summary: 'Delete a user' })
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiOkResponse({ type: MessageResponseDto })
-  @ApiNotFoundResponse({ description: 'User with the specified id was not found.' })
+  @ApiNotFoundResponse({
+    description: 'User with the specified id was not found.',
+  })
   async remove(@Param('id') id: string): Promise<MessageResponseDto> {
     await this.usersService.remove(id);
     return { message: 'User deleted successfully.' };
   }
 }
-
-

@@ -1,5 +1,5 @@
-import { AcademyMembershipStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AcademyMembershipStatus } from '@prisma/client';
 import { Role } from './role.enum';
 import { UserStatus } from './user-status.enum';
 
@@ -90,6 +90,15 @@ export class UserEntity {
 
   @ApiPropertyOptional({ type: () => [UserAcademyMembershipSummary] })
   academies?: UserAcademyMembershipSummary[];
+
+  @ApiPropertyOptional({
+    description: 'Academy owned by this user (only for ACADEMY_OWNER role)',
+  })
+  academy?: {
+    id: string;
+    name: string | null;
+    status: string | null;
+  };
 
   @ApiPropertyOptional({ type: Object })
   _count?: Record<string, number> | null;

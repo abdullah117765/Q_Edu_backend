@@ -1,13 +1,25 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AcademyMembershipStatus, Prisma, Role as PrismaRole, UserStatus as PrismaUserStatus, User } from '@prisma/client';
+import {
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
+import {
+    AcademyMembershipStatus,
+    Prisma,
+    Role as PrismaRole,
+    UserStatus as PrismaUserStatus,
+    User,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { UploadedFile } from '../../common/interfaces/uploaded-file.interface';
 
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/pagination.interface';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AcademiesService } from '../academies/academies.service';
 import { StorageService } from '../../storage/storage.service';
+import { AcademiesService } from '../academies/academies.service';
 import { AdminsQueryDto } from './dto/admins-query.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -15,9 +27,10 @@ import { CreateTeacherDto } from './dto/create-teacher.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { StudentsQueryDto } from './dto/students-query.dto';
 import { TeachersQueryDto } from './dto/teachers-query.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UsersDirectoryQueryDto } from './dto/users-directory-query.dto';
 import { Role } from './entities/role.enum';
 import { UserStatus } from './entities/user-status.enum';
 import { UserEntity } from './entities/user.entity';
@@ -33,7 +46,9 @@ type UsersSummary = {
   inactive: number;
 };
 
-type UsersPaginatedResponse = PaginatedResponse<UserEntity> & { summary: UsersSummary };
+type UsersPaginatedResponse = PaginatedResponse<UserEntity> & {
+  summary: UsersSummary;
+};
 
 type CurrentUserContext = {
   id: string;
@@ -51,14 +66,18 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (existing) {
       throw new ConflictException('Email address is already in use.');
     }
 
     const role = dto.role ?? Role.STUDENT;
     if (role === Role.SUPER_ADMIN) {
-      const superAdminCount = await this.prisma.user.count({ where: { role: PrismaRole.SUPER_ADMIN } });
+      const superAdminCount = await this.prisma.user.count({
+        where: { role: PrismaRole.SUPER_ADMIN },
+      });
       if (superAdminCount > 0) {
         throw new ConflictException('A super admin already exists.');
       }
@@ -86,7 +105,9 @@ export class UsersService {
           description: dto.academyDescription,
         });
       } catch (error) {
-        this.logger.error(`Failed to provision academy for owner ${user.id}: ${(error as Error).message}`);
+        this.logger.error(
+          `Failed to provision academy for owner ${user.id}: ${(error as Error).message}`,
+        );
         await this.prisma.user.delete({ where: { id: user.id } });
         throw error;
       }
@@ -108,46 +129,80 @@ export class UsersService {
   }
 
   async findAll(
-    pagination: PaginationQueryDto,
+    query: UsersDirectoryQueryDto,
     currentUser?: CurrentUserContext,
   ): Promise<UsersPaginatedResponse> {
-    const { page, limit } = pagination;
+    const { page, limit } = query;
     const skip = (page - 1) * limit;
 
-    const { where, emptyResult } = await this.buildScopedWhere({}, currentUser);
+    const baseWhere: Prisma.UserWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+    };
+
+    const search = query.search?.trim();
+    if (search) {
+      baseWhere.OR = [
+        { firstName: { contains: search } },
+        { lastName: { contains: search } },
+        { email: { contains: search } },
+      ];
+    }
+
+    const { where, emptyResult } = await this.buildScopedWhere(
+      baseWhere,
+      currentUser,
+    );
     if (emptyResult) {
       return this.emptyPaginatedResponse(page);
     }
 
-    const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.user.groupBy({
-        by: ['status'],
-        where,
-        orderBy: { status: 'asc' },
-        _count: { _all: true },
-      }),
-      this.prisma.user.count({
-        where: {
-          AND: [where, { isActive: false }],
-        },
-      }),
-    ]);
+    const [total, users, statusGroups, inactiveCount] =
+      await this.prisma.$transaction([
+        this.prisma.user.count({ where }),
+        this.prisma.user.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+          include: {
+            ownedAcademy: { select: { id: true, name: true, status: true } },
+            academyMemberships: {
+              where: { status: AcademyMembershipStatus.APPROVED },
+              select: {
+                academyId: true,
+                status: true,
+                academy: { select: { id: true, name: true } },
+              },
+            },
+          },
+        }),
+        this.prisma.user.groupBy({
+          by: ['status'],
+          where,
+          orderBy: { status: 'asc' },
+          _count: { _all: true },
+        }),
+        this.prisma.user.count({
+          where: {
+            AND: [where, { isActive: false }],
+          },
+        }),
+      ]);
 
     const data = users.map((userRecord) => {
-      const { academyMemberships, ...rest } = userRecord as typeof userRecord & {
-        academyMemberships?: Array<{
-          academyId: string;
-          status: AcademyMembershipStatus;
-          academy?: { id: string; name: string | null };
-        }>;
-      };
+      const { academyMemberships, ownedAcademy, ...rest } =
+        userRecord as typeof userRecord & {
+          academyMemberships?: Array<{
+            academyId: string;
+            status: AcademyMembershipStatus;
+            academy?: { id: string; name: string | null };
+          }>;
+          ownedAcademy?: {
+            id: string;
+            name: string | null;
+            status?: string;
+          } | null;
+        };
       const entity = this.toEntity(rest as unknown as User);
       if (Array.isArray(academyMemberships)) {
         entity.academies = academyMemberships.map((membership) => ({
@@ -155,6 +210,13 @@ export class UsersService {
           academyName: membership.academy?.name ?? null,
           status: membership.status,
         }));
+      }
+      if (ownedAcademy) {
+        entity.academy = {
+          id: ownedAcademy.id,
+          name: ownedAcademy.name ?? null,
+          status: (ownedAcademy.status as string | undefined) ?? null,
+        };
       }
       return entity;
     });
@@ -197,13 +259,20 @@ export class UsersService {
     return this.findByRole(Role.STUDENT, query, currentUser);
   }
 
-  async findOne(id: string, currentUser?: CurrentUserContext): Promise<UserEntity> {
+  async findOne(
+    id: string,
+    currentUser?: CurrentUserContext,
+  ): Promise<UserEntity> {
     const user = await this.fetchUserWithAssociations(id);
     if (!user) {
       throw new NotFoundException('User with the specified id was not found.');
     }
 
-    if (currentUser && currentUser.id !== id && currentUser.role !== Role.SUPER_ADMIN) {
+    if (
+      currentUser &&
+      currentUser.id !== id &&
+      currentUser.role !== Role.SUPER_ADMIN
+    ) {
       const scope = await this.academiesService.getAccessibleAcademyScope(
         currentUser.id,
         currentUser.role as unknown as PrismaRole,
@@ -211,14 +280,24 @@ export class UsersService {
 
       if (!scope.unlimited) {
         const approvedMembershipAcademyIds = (user.academyMemberships ?? [])
-          .filter((membership) => membership.status === AcademyMembershipStatus.APPROVED)
+          .filter(
+            (membership) =>
+              membership.status === AcademyMembershipStatus.APPROVED,
+          )
           .map((membership) => membership.academyId);
         const ownedAcademyIds = user.ownedAcademy ? [user.ownedAcademy.id] : [];
-        const accessibleAcademyIds = new Set([...approvedMembershipAcademyIds, ...ownedAcademyIds]);
-        const hasOverlap = scope.academyIds.some((academyId) => accessibleAcademyIds.has(academyId));
+        const accessibleAcademyIds = new Set([
+          ...approvedMembershipAcademyIds,
+          ...ownedAcademyIds,
+        ]);
+        const hasOverlap = scope.academyIds.some((academyId) =>
+          accessibleAcademyIds.has(academyId),
+        );
 
         if (!hasOverlap) {
-          throw new ForbiddenException('You are not authorized to view this user.');
+          throw new ForbiddenException(
+            'You are not authorized to view this user.',
+          );
         }
       }
     }
@@ -235,7 +314,10 @@ export class UsersService {
     return this.toEntity(user);
   }
 
-  async updateOwnProfile(userId: string, dto: UpdateProfileDto): Promise<UserEntity> {
+  async updateOwnProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<UserEntity> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User with the specified id was not found.');
@@ -312,7 +394,10 @@ export class UsersService {
     return this.toEntity(refreshed ?? user);
   }
 
-  async updateProfilePhoto(userId: string, file: UploadedFile): Promise<UserEntity> {
+  async updateProfilePhoto(
+    userId: string,
+    file: UploadedFile,
+  ): Promise<UserEntity> {
     if (!file || !file.buffer) {
       throw new BadRequestException('No file was provided.');
     }
@@ -366,7 +451,10 @@ export class UsersService {
       throw new NotFoundException('User with the specified id was not found.');
     }
 
-    if (dto.role === Role.SUPER_ADMIN && existing.role !== PrismaRole.SUPER_ADMIN) {
+    if (
+      dto.role === Role.SUPER_ADMIN &&
+      existing.role !== PrismaRole.SUPER_ADMIN
+    ) {
       throw new BadRequestException('Cannot promote user to super admin.');
     }
 
@@ -386,7 +474,10 @@ export class UsersService {
     return this.toEntity(user);
   }
 
-  async updateStatus(id: string, dto: UpdateUserStatusDto): Promise<UserEntity> {
+  async updateStatus(
+    id: string,
+    dto: UpdateUserStatusDto,
+  ): Promise<UserEntity> {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('User with the specified id was not found.');
@@ -398,13 +489,16 @@ export class UsersService {
 
     if (dto.status === UserStatus.REJECTED) {
       if (!dto.rejectionReason?.trim()) {
-        throw new BadRequestException('rejectionReason is required when rejecting a user.');
+        throw new BadRequestException(
+          'rejectionReason is required when rejecting a user.',
+        );
       }
       updateData.rejectionReason = dto.rejectionReason.trim();
       updateData.isActive = false;
     } else {
       updateData.rejectionReason = null;
-      updateData.isActive = dto.status === UserStatus.APPROVED ? true : existing.isActive;
+      updateData.isActive =
+        dto.status === UserStatus.APPROVED ? true : existing.isActive;
     }
 
     const user = await this.prisma.user.update({
@@ -458,7 +552,10 @@ export class UsersService {
       ];
     }
 
-    const { where, emptyResult } = await this.buildScopedWhere(baseWhere, currentUser);
+    const { where, emptyResult } = await this.buildScopedWhere(
+      baseWhere,
+      currentUser,
+    );
     if (emptyResult) {
       return this.emptyPaginatedResponse(query.page);
     }
@@ -468,54 +565,67 @@ export class UsersService {
       role === Role.TEACHER
         ? { _count: { select: { teachingClasses: true } } }
         : role === Role.STUDENT
-        ? {
-            _count: { select: { classParticipants: true } },
-            academyMemberships: {
-              where: { status: AcademyMembershipStatus.APPROVED },
-              select: {
-                academyId: true,
-                status: true,
-                academy: {
-                  select: {
-                    id: true,
-                    name: true,
+          ? {
+              _count: { select: { classParticipants: true } },
+              academyMemberships: {
+                where: { status: AcademyMembershipStatus.APPROVED },
+                select: {
+                  academyId: true,
+                  status: true,
+                  academy: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
                   },
                 },
               },
-            },
-          }
-        : undefined;
+            }
+          : role === Role.ACADEMY_OWNER
+            ? {
+                ownedAcademy: {
+                  select: { id: true, name: true, status: true },
+                },
+              }
+            : undefined;
 
-    const [total, users, statusGroups, inactiveCount] = await this.prisma.$transaction([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: query.limit,
-        ...(include ? { include } : {}),
-      }),
-      this.prisma.user.groupBy({
-        by: ['status'],
-        where,
-        orderBy: { status: 'asc' },
-        _count: { _all: true },
-      }),
-      this.prisma.user.count({
-        where: {
-          AND: [where, { isActive: false }],
-        },
-      }),
-    ]);
+    const [total, users, statusGroups, inactiveCount] =
+      await this.prisma.$transaction([
+        this.prisma.user.count({ where }),
+        this.prisma.user.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: query.limit,
+          ...(include ? { include } : {}),
+        }),
+        this.prisma.user.groupBy({
+          by: ['status'],
+          where,
+          orderBy: { status: 'asc' },
+          _count: { _all: true },
+        }),
+        this.prisma.user.count({
+          where: {
+            AND: [where, { isActive: false }],
+          },
+        }),
+      ]);
 
     const data = users.map((userRecord) => {
-      const { academyMemberships, ...rest } = userRecord as typeof userRecord & {
-        academyMemberships?: Array<{
-          academyId: string;
-          status: AcademyMembershipStatus;
-          academy?: { id: string; name: string | null };
-        }>;
-      };
+      const { academyMemberships, ownedAcademy, ...rest } =
+        userRecord as typeof userRecord & {
+          academyMemberships?: Array<{
+            academyId: string;
+            status: AcademyMembershipStatus;
+            academy?: { id: string; name: string | null };
+          }>;
+          ownedAcademy?: {
+            id: string;
+            name: string | null;
+            status?: string;
+          } | null;
+        };
       const entity = this.toEntity(rest as unknown as User);
       if (Array.isArray(academyMemberships)) {
         entity.academies = academyMemberships.map((membership) => ({
@@ -523,6 +633,13 @@ export class UsersService {
           academyName: membership.academy?.name ?? null,
           status: membership.status,
         }));
+      }
+      if (ownedAcademy) {
+        entity.academy = {
+          id: ownedAcademy.id,
+          name: ownedAcademy.name ?? null,
+          status: (ownedAcademy.status as string | undefined) ?? null,
+        };
       }
       return entity;
     });
@@ -617,12 +734,17 @@ export class UsersService {
   }
 
   private extractStatusCounts(
-    groups: Array<{ status: PrismaUserStatus; _count: true | { _all?: number } | null | undefined }>,
+    groups: Array<{
+      status: PrismaUserStatus;
+      _count: true | { _all?: number } | null | undefined;
+    }>,
   ): Record<PrismaUserStatus, number> {
     return groups.reduce<Record<PrismaUserStatus, number>>(
       (acc, group) => {
         const countValue =
-          typeof group._count === 'object' && group._count !== null && '_all' in group._count
+          typeof group._count === 'object' &&
+          group._count !== null &&
+          '_all' in group._count
             ? ((group._count as { _all?: number })._all ?? 0)
             : 0;
         acc[group.status] = countValue;
@@ -636,7 +758,10 @@ export class UsersService {
     );
   }
 
-  private buildSummary(statusCounts: Record<PrismaUserStatus, number>, inactiveCount: number): UsersSummary {
+  private buildSummary(
+    statusCounts: Record<PrismaUserStatus, number>,
+    inactiveCount: number,
+  ): UsersSummary {
     return {
       approved: statusCounts[PrismaUserStatus.APPROVED] ?? 0,
       pending: statusCounts[PrismaUserStatus.PENDING] ?? 0,
@@ -671,7 +796,9 @@ export class UsersService {
     });
   }
 
-  private normaliseNullableString(value?: string | null): string | null | undefined {
+  private normaliseNullableString(
+    value?: string | null,
+  ): string | null | undefined {
     if (value === undefined) {
       return undefined;
     }
@@ -684,7 +811,3 @@ export class UsersService {
     return trimmed.length > 0 ? trimmed : null;
   }
 }
-
-
-
-
