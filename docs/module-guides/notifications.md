@@ -4,25 +4,25 @@ In-app + email notification system. Backed by the `Notification` Prisma model an
 
 ## Endpoints
 
-| Verb | Path | Description |
-| --- | --- | --- |
-| `GET` | `/api/notifications?unreadOnly=true&take=20&skip=0` | Lists the caller's notifications (newest first). Returns `{ items, total, unread, take, skip }`. |
-| `PATCH` | `/api/notifications/:id/read` | Marks a single notification as read. 404 if the notification does not belong to the caller. |
-| `POST` | `/api/notifications/read-all` | Marks all of the caller's unread notifications as read. Returns `{ updated }`. |
+| Verb    | Path                                                | Description                                                                                      |
+| ------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET`   | `/api/notifications?unreadOnly=true&take=20&skip=0` | Lists the caller's notifications (newest first). Returns `{ items, total, unread, take, skip }`. |
+| `PATCH` | `/api/notifications/:id/read`                       | Marks a single notification as read. 404 if the notification does not belong to the caller.      |
+| `POST`  | `/api/notifications/read-all`                       | Marks all of the caller's unread notifications as read. Returns `{ updated }`.                   |
 
 All endpoints require an authenticated user (any role).
 
 ## Notification types
 
-| Type | Source |
-| --- | --- |
-| `PAYMENT_RECEIVED` | Stripe `checkout.session.completed` (package), `invoice.paid` (subscription). |
-| `PAYMENT_FAILED` | Stripe `invoice.payment_failed`. |
-| `SUBSCRIPTION_ACTIVATED` | Stripe `checkout.session.completed` (subscription). |
-| `SUBSCRIPTION_CANCELLED` | Reserved for future cancellation events. |
-| `COUPON_REDEEMED` | When a coupon is redeemed at checkout. |
-| `MEMBERSHIP_PENDING` / `MEMBERSHIP_APPROVED` / `MEMBERSHIP_REJECTED` | `UsersService.updateStatus` for `TEACHER` / `STUDENT` users. |
-| `GENERIC` | Fallback for ad-hoc notifications. |
+| Type                                                                 | Source                                                                        |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `PAYMENT_RECEIVED`                                                   | Stripe `checkout.session.completed` (package), `invoice.paid` (subscription). |
+| `PAYMENT_FAILED`                                                     | Stripe `invoice.payment_failed`.                                              |
+| `SUBSCRIPTION_ACTIVATED`                                             | Stripe `checkout.session.completed` (subscription).                           |
+| `SUBSCRIPTION_CANCELLED`                                             | Reserved for future cancellation events.                                      |
+| `COUPON_REDEEMED`                                                    | When a coupon is redeemed at checkout.                                        |
+| `MEMBERSHIP_PENDING` / `MEMBERSHIP_APPROVED` / `MEMBERSHIP_REJECTED` | `UsersService.updateStatus` for `TEACHER` / `STUDENT` users.                  |
+| `GENERIC`                                                            | Fallback for ad-hoc notifications.                                            |
 
 ## Dispatching from other modules
 

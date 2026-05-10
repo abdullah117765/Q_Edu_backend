@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   - `UsersService.updateStatus` notifies the affected teacher/student when their membership is approved, rejected or set to pending.
 - **Owner-scoped membership management**: `ACADEMY_OWNER`s can now approve/reject their own teachers and students through `PATCH /api/users/:id/status`. Newly created teachers/students by an owner are auto-linked as `PENDING` `AcademyMembership` rows in the owner's academy.
 - **Credit usage trend**: `GET /api/zoom-credits/me/usage-trend?days=N` returns per-day credited/debited/net totals (1–365 days, default 30) for the authenticated user.
+- **Contact inbox backend**: new `ContactMessage` model + `ContactMessagesModule`.
+  - Public submit endpoint: `POST /api/contact-messages`.
+  - Super-admin inbox endpoints: `GET /api/contact-messages/admin`, `PATCH /api/contact-messages/admin/:id/status`, `PATCH /api/contact-messages/admin/:id/read`.
 
 ### Stripe billing — initial release
 
@@ -42,8 +45,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Changed
 
 - `UsersService.findAll` and `findByRole` now include the owner's academy and the user's approved academy memberships, fixing missing/incorrect academy names in the User Management list.
+- `GET /api/users` now excludes `SUPER_ADMIN` rows from directory results by default and supports backend filters `role`, `academyId`, and `ownerId` in addition to `status` and `search`.
 - Production input length limits: name ≤ 80, bio ≤ 500, phone ≤ 32, email ≤ 254, password ≤ 128, gender ≤ 64.
 - `GET /users/students` now masks student emails as `a***@domain.com` when the caller is a `TEACHER`.
+- `GET /api/billing/admin/analytics` now supports `interval=day|week|month` and optional `provider`, returning `timeSeries` points for chart-based dashboards.
 
 ### Fixed
 
