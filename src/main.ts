@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import { json, raw } from 'express';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AppModule } from './app.module';
@@ -15,7 +16,7 @@ const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: false });
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
@@ -64,6 +65,13 @@ async function bootstrap() {
   };
   app.enableCors(corsOptions);
   app.use(cookieParser());
+  // Stripe webhook needs the raw body to verify signatures.
+  app.use('/api/billing/webhook', raw({ type: 'application/json', limit: '1mb' }), (req: any, _res: any, next: any) => {
+    if (Buffer.isBuffer(req.body)) {
+      req.rawBody = req.body;
+    }
+    next();
+  });
   app.use(
     helmet({
       contentSecurityPolicy: false,
