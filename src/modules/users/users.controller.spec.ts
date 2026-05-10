@@ -1,6 +1,6 @@
-import { UsersController } from './users.controller';
 import { Role } from './entities/role.enum';
 import { UserStatus } from './entities/user-status.enum';
+import { UsersController } from './users.controller';
 
 describe('UsersController', () => {
   const usersServiceMock = {
@@ -28,7 +28,13 @@ describe('UsersController', () => {
     it('masks emails for TEACHER callers', async () => {
       usersServiceMock.findStudents.mockResolvedValueOnce({
         data: [{ ...baseStudent }],
-        meta: { total: 1, currentPage: 1, totalPages: 1, nextPage: null, previousPage: null },
+        meta: {
+          total: 1,
+          currentPage: 1,
+          totalPages: 1,
+          nextPage: null,
+          previousPage: null,
+        },
         summary: {},
       });
 
@@ -48,7 +54,13 @@ describe('UsersController', () => {
     it('does not mask emails for SUPER_ADMIN callers', async () => {
       usersServiceMock.findStudents.mockResolvedValueOnce({
         data: [{ ...baseStudent }],
-        meta: { total: 1, currentPage: 1, totalPages: 1, nextPage: null, previousPage: null },
+        meta: {
+          total: 1,
+          currentPage: 1,
+          totalPages: 1,
+          nextPage: null,
+          previousPage: null,
+        },
         summary: {},
       });
 
@@ -64,7 +76,13 @@ describe('UsersController', () => {
     it('handles single character local part safely', async () => {
       usersServiceMock.findStudents.mockResolvedValueOnce({
         data: [{ ...baseStudent, email: 'a@example.com' }],
-        meta: { total: 1, currentPage: 1, totalPages: 1, nextPage: null, previousPage: null },
+        meta: {
+          total: 1,
+          currentPage: 1,
+          totalPages: 1,
+          nextPage: null,
+          previousPage: null,
+        },
         summary: {},
       });
       const teacher = { id: 't-1', role: Role.TEACHER, email: 't@x.com' };

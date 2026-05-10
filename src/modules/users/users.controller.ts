@@ -67,16 +67,24 @@ export class UsersController {
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'Create a new teacher account' })
   @ApiCreatedResponse({ type: UserEntity })
-  createTeacher(@Body() dto: CreateTeacherDto) {
-    return this.usersService.createTeacher(dto);
+  createTeacher(@Body() dto: CreateTeacherDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    return this.usersService.createTeacher(
+      dto,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Post('students')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'Create a new student account' })
   @ApiCreatedResponse({ type: UserEntity })
-  createStudent(@Body() dto: CreateStudentDto) {
-    return this.usersService.createStudent(dto);
+  createStudent(@Body() dto: CreateStudentDto, @Req() request: Request) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    return this.usersService.createStudent(
+      dto,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Get('admins')
@@ -233,7 +241,7 @@ export class UsersController {
   }
 
   @Patch(':id/status')
-  @Auth(Role.SUPER_ADMIN)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'Update user approval status' })
   @ApiParam({ name: 'id', description: 'User identifier' })
   @ApiBody({ type: UpdateUserStatusDto })
@@ -244,8 +252,17 @@ export class UsersController {
   @ApiNotFoundResponse({
     description: 'User with the specified id was not found.',
   })
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {
-    return this.usersService.updateStatus(id, dto);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserStatusDto,
+    @Req() request: Request,
+  ) {
+    const currentUser = request['user'] as UserEntity | undefined;
+    return this.usersService.updateStatus(
+      id,
+      dto,
+      currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
+    );
   }
 
   @Delete(':id')

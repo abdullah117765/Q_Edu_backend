@@ -1,8 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+    IsEmail,
+    IsEnum,
+    IsOptional,
+    IsString,
+    Length,
+    Matches,
+    MaxLength,
+    MinLength,
+} from 'class-validator';
+import { NoEmoji } from '../../../common/validators/no-emoji.validator';
 import { Role } from '../entities/role.enum';
 import { PHONE_REGEX } from './phone-regex.constant';
-import { NoEmoji } from '../../../common/validators/no-emoji.validator';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'user@example.com', maxLength: 254 })
@@ -38,7 +47,9 @@ export class CreateUserDto {
   })
   @IsString()
   @MaxLength(32)
-  @Matches(PHONE_REGEX, { message: 'phoneNumber must contain only digits, spaces, and valid symbols' })
+  @Matches(PHONE_REGEX, {
+    message: 'phoneNumber must contain only digits, spaces, and valid symbols',
+  })
   @NoEmoji()
   phoneNumber!: string;
 

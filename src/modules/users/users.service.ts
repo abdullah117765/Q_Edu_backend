@@ -120,12 +120,52 @@ export class UsersService {
     return this.create({ ...(dto as CreateUserDto), role: Role.ACADEMY_OWNER });
   }
 
-  async createTeacher(dto: CreateTeacherDto): Promise<UserEntity> {
-    return this.create({ ...(dto as CreateUserDto), role: Role.TEACHER });
+  async createTeacher(
+    dto: CreateTeacherDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UserEntity> {
+    const created = await this.create({
+      ...(dto as CreateUserDto),
+      role: Role.TEACHER,
+    });
+    await this.linkToOwnerAcademy(created.id, 'TEACHER', currentUser);
+    return created;
   }
 
-  async createStudent(dto: CreateStudentDto): Promise<UserEntity> {
-    return this.create({ ...(dto as CreateUserDto), role: Role.STUDENT });
+  async createStudent(
+    dto: CreateStudentDto,
+    currentUser?: CurrentUserContext,
+  ): Promise<UserEntity> {
+    const created = await this.create({
+      ...(dto as CreateUserDto),
+      role: Role.STUDENT,
+    });
+    await this.linkToOwnerAcademy(created.id, 'STUDENT', currentUser);
+    return created;
+  }
+
+  private async linkToOwnerAcademy(
+    userId: string,
+    role: 'TEACHER' | 'STUDENT',
+    currentUser?: CurrentUserContext,
+  ): Promise<void> {
+    if (!currentUser || currentUser.role !== Role.ACADEMY_OWNER) return;
+    const academy = await this.prisma.academy.findUnique({
+      where: { ownerId: currentUser.id },
+      select: { id: true },
+    });
+    if (!academy) return;
+    await this.prisma.academyMembership.upsert({
+      where: { academyId_userId: { academyId: academy.id, userId } },
+      create: {
+        academyId: academy.id,
+        userId,
+        role: role as any,
+        status: AcademyMembershipStatus.PENDING,
+        actionedById: currentUser.id,
+      },
+      update: {},
+    });
   }
 
   async findAll(
@@ -477,10 +517,39 @@ export class UsersService {
   async updateStatus(
     id: string,
     dto: UpdateUserStatusDto,
+    currentUser?: CurrentUserContext,
   ): Promise<UserEntity> {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        academyMemberships: { select: { academyId: true } },
+      },
+    });
     if (!existing) {
       throw new NotFoundException('User with the specified id was not found.');
+    }
+
+    if (currentUser && currentUser.role === Role.ACADEMY_OWNER) {
+      if (existing.role !== Role.TEACHER && existing.role !== Role.STUDENT) {
+        throw new ForbiddenException(
+          'Academy owners can only manage teachers or students in their academy.',
+        );
+      }
+      const academy = await this.prisma.academy.findUnique({
+        where: { ownerId: currentUser.id },
+        select: { id: true },
+      });
+      if (!academy) {
+        throw new ForbiddenException(
+          'Owner academy not found for membership scope check.',
+        );
+      }
+      const inAcademy = existing.academyMemberships.some(
+        (m) => m.academyId === academy.id,
+      );
+      if (!inAcademy) {
+        throw new ForbiddenException('User does not belong to your academy.');
+      }
     }
 
     const updateData: Prisma.UserUpdateInput = {
@@ -505,6 +574,23 @@ export class UsersService {
       where: { id },
       data: updateData,
     });
+
+    if (existing.role === Role.TEACHER || existing.role === Role.STUDENT) {
+      const membershipStatus =
+        dto.status === UserStatus.APPROVED
+          ? AcademyMembershipStatus.APPROVED
+          : dto.status === UserStatus.REJECTED
+            ? AcademyMembershipStatus.REJECTED
+            : AcademyMembershipStatus.PENDING;
+      await this.prisma.academyMembership.updateMany({
+        where: { userId: id },
+        data: {
+          status: membershipStatus,
+          respondedAt: new Date(),
+          actionedById: currentUser?.id,
+        },
+      });
+    }
 
     this.logger.log(`User ${id} status changed to ${dto.status}`);
 

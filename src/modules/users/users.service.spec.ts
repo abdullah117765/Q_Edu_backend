@@ -23,7 +23,9 @@ describe('UsersService - onboarding', () => {
 
   const academiesServiceMock = {
     ensureAcademyForOwner: jest.fn(),
-    getAccessibleAcademyScope: jest.fn().mockResolvedValue({ unlimited: true, academyIds: [] }),
+    getAccessibleAcademyScope: jest
+      .fn()
+      .mockResolvedValue({ unlimited: true, academyIds: [] }),
   };
 
   const storageMock = {
@@ -35,7 +37,9 @@ describe('UsersService - onboarding', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prismaMock.$transaction.mockImplementation(async (queries: Promise<unknown>[]) => Promise.all(queries));
+    prismaMock.$transaction.mockImplementation(
+      async (queries: Promise<unknown>[]) => Promise.all(queries),
+    );
     prismaMock.user.count.mockResolvedValue(0);
     prismaMock.user.groupBy.mockResolvedValue([]);
     service = new UsersService(
@@ -107,13 +111,18 @@ describe('UsersService - onboarding', () => {
     });
 
     expect(prismaMock.user.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({ role: Role.STUDENT, status: UserStatus.PENDING }),
+      where: expect.objectContaining({
+        role: Role.STUDENT,
+        status: UserStatus.PENDING,
+      }),
     });
-    expect(prismaMock.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ role: Role.STUDENT }),
-      skip: 0,
-      take: 10,
-    }));
+    expect(prismaMock.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: Role.STUDENT }),
+        skip: 0,
+        take: 10,
+      }),
+    );
     expect(result.data).toHaveLength(1);
     expect(result.meta.total).toBe(1);
     expect(result.meta.totalPages).toBe(1);
