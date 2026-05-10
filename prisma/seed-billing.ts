@@ -7,7 +7,13 @@
  *
  * Run with:  npx ts-node -r tsconfig-paths/register prisma/seed-billing.ts
  */
-import { Prisma, PrismaClient, SubscriptionInterval, SubscriptionStatus, ZoomCreditPackageBillingType } from '@prisma/client';
+import {
+    Prisma,
+    PrismaClient,
+    SubscriptionInterval,
+    SubscriptionStatus,
+    ZoomCreditPackageBillingType,
+} from '@prisma/client';
 import Stripe from 'stripe';
 
 const prisma = new PrismaClient();
@@ -22,10 +28,46 @@ const PACKAGES: Array<{
   highlight: boolean;
   sortOrder: number;
 }> = [
-  { slug: 'starter', name: 'Starter Pack', description: '100 credits — ideal for trying classes out.', credits: 100, bonusCredits: 0, priceCents: 1000, highlight: false, sortOrder: 1 },
-  { slug: 'pro', name: 'Pro Pack', description: '500 credits + 50 bonus. Great for active academies.', credits: 500, bonusCredits: 50, priceCents: 4500, highlight: true, sortOrder: 2 },
-  { slug: 'scale', name: 'Scale Pack', description: '1,000 credits + 150 bonus. Best per-credit value.', credits: 1000, bonusCredits: 150, priceCents: 8000, highlight: false, sortOrder: 3 },
-  { slug: 'enterprise', name: 'Enterprise Pack', description: '5,000 credits + 1,000 bonus for large academies.', credits: 5000, bonusCredits: 1000, priceCents: 35000, highlight: false, sortOrder: 4 },
+  {
+    slug: 'starter',
+    name: 'Starter Pack',
+    description: '100 credits — ideal for trying classes out.',
+    credits: 100,
+    bonusCredits: 0,
+    priceCents: 1000,
+    highlight: false,
+    sortOrder: 1,
+  },
+  {
+    slug: 'pro',
+    name: 'Pro Pack',
+    description: '500 credits + 50 bonus. Great for active academies.',
+    credits: 500,
+    bonusCredits: 50,
+    priceCents: 4500,
+    highlight: true,
+    sortOrder: 2,
+  },
+  {
+    slug: 'scale',
+    name: 'Scale Pack',
+    description: '1,000 credits + 150 bonus. Best per-credit value.',
+    credits: 1000,
+    bonusCredits: 150,
+    priceCents: 8000,
+    highlight: false,
+    sortOrder: 3,
+  },
+  {
+    slug: 'enterprise',
+    name: 'Enterprise Pack',
+    description: '5,000 credits + 1,000 bonus for large academies.',
+    credits: 5000,
+    bonusCredits: 1000,
+    priceCents: 35000,
+    highlight: false,
+    sortOrder: 4,
+  },
 ];
 
 const PLANS: Array<{
@@ -41,31 +83,100 @@ const PLANS: Array<{
   highlight: boolean;
   sortOrder: number;
 }> = [
-  { tier: 'free', name: 'Free', description: 'Get started. Pay-as-you-go credits.', priceCents: 0, interval: SubscriptionInterval.MONTHLY, monthlyClassMinutes: 0, monthlyCredits: 0, maxTeachers: 1, maxStudents: 10, highlight: false, sortOrder: 1 },
-  { tier: 'pro_monthly', name: 'Pro (Monthly)', description: '600 minutes + 50 credits per month.', priceCents: 2900, interval: SubscriptionInterval.MONTHLY, monthlyClassMinutes: 600, monthlyCredits: 50, maxTeachers: 5, maxStudents: 100, highlight: true, sortOrder: 2 },
-  { tier: 'pro_yearly', name: 'Pro (Yearly)', description: 'Pro tier billed yearly — 2 months free.', priceCents: 29000, interval: SubscriptionInterval.YEARLY, monthlyClassMinutes: 600, monthlyCredits: 50, maxTeachers: 5, maxStudents: 100, highlight: false, sortOrder: 3 },
-  { tier: 'scale_monthly', name: 'Scale (Monthly)', description: '2,000 minutes + 200 credits per month.', priceCents: 9900, interval: SubscriptionInterval.MONTHLY, monthlyClassMinutes: 2000, monthlyCredits: 200, maxTeachers: 25, maxStudents: 500, highlight: false, sortOrder: 4 },
-  { tier: 'scale_yearly', name: 'Scale (Yearly)', description: 'Scale tier billed yearly — 2 months free.', priceCents: 99000, interval: SubscriptionInterval.YEARLY, monthlyClassMinutes: 2000, monthlyCredits: 200, maxTeachers: 25, maxStudents: 500, highlight: false, sortOrder: 5 },
+  {
+    tier: 'free',
+    name: 'Free',
+    description: 'Get started. Pay-as-you-go credits.',
+    priceCents: 0,
+    interval: SubscriptionInterval.MONTHLY,
+    monthlyClassMinutes: 0,
+    monthlyCredits: 0,
+    maxTeachers: 1,
+    maxStudents: 10,
+    highlight: false,
+    sortOrder: 1,
+  },
+  {
+    tier: 'pro_monthly',
+    name: 'Pro (Monthly)',
+    description: '600 minutes + 50 credits per month.',
+    priceCents: 2900,
+    interval: SubscriptionInterval.MONTHLY,
+    monthlyClassMinutes: 600,
+    monthlyCredits: 50,
+    maxTeachers: 5,
+    maxStudents: 100,
+    highlight: true,
+    sortOrder: 2,
+  },
+  {
+    tier: 'pro_yearly',
+    name: 'Pro (Yearly)',
+    description: 'Pro tier billed yearly — 2 months free.',
+    priceCents: 29000,
+    interval: SubscriptionInterval.YEARLY,
+    monthlyClassMinutes: 600,
+    monthlyCredits: 50,
+    maxTeachers: 5,
+    maxStudents: 100,
+    highlight: false,
+    sortOrder: 3,
+  },
+  {
+    tier: 'scale_monthly',
+    name: 'Scale (Monthly)',
+    description: '2,000 minutes + 200 credits per month.',
+    priceCents: 9900,
+    interval: SubscriptionInterval.MONTHLY,
+    monthlyClassMinutes: 2000,
+    monthlyCredits: 200,
+    maxTeachers: 25,
+    maxStudents: 500,
+    highlight: false,
+    sortOrder: 4,
+  },
+  {
+    tier: 'scale_yearly',
+    name: 'Scale (Yearly)',
+    description: 'Scale tier billed yearly — 2 months free.',
+    priceCents: 99000,
+    interval: SubscriptionInterval.YEARLY,
+    monthlyClassMinutes: 2000,
+    monthlyCredits: 200,
+    maxTeachers: 25,
+    maxStudents: 500,
+    highlight: false,
+    sortOrder: 5,
+  },
 ];
 
-async function ensureProductAndPrice(stripe: Stripe, params: {
-  name: string;
-  unitAmount: number;
-  currency: string;
-  recurring?: { interval: 'month' | 'year' };
-  productId?: string | null;
-  priceId?: string | null;
-  metadata?: Record<string, string>;
-}): Promise<{ productId: string; priceId: string }> {
+async function ensureProductAndPrice(
+  stripe: Stripe,
+  params: {
+    name: string;
+    unitAmount: number;
+    currency: string;
+    recurring?: { interval: 'month' | 'year' };
+    productId?: string | null;
+    priceId?: string | null;
+    metadata?: Record<string, string>;
+  },
+): Promise<{ productId: string; priceId: string }> {
   let product: Stripe.Product;
   if (params.productId) {
     try {
       product = await stripe.products.retrieve(params.productId);
     } catch {
-      product = await stripe.products.create({ name: params.name, metadata: params.metadata });
+      product = await stripe.products.create({
+        name: params.name,
+        metadata: params.metadata,
+      });
     }
   } else {
-    product = await stripe.products.create({ name: params.name, metadata: params.metadata });
+    product = await stripe.products.create({
+      name: params.name,
+      metadata: params.metadata,
+    });
   }
   // Reuse price if same amount/currency/recurring
   if (params.priceId) {
@@ -73,7 +184,9 @@ async function ensureProductAndPrice(stripe: Stripe, params: {
       const existing = await stripe.prices.retrieve(params.priceId);
       const sameAmount = existing.unit_amount === params.unitAmount;
       const sameCurrency = existing.currency === params.currency.toLowerCase();
-      const sameRecurring = (existing.recurring?.interval ?? null) === (params.recurring?.interval ?? null);
+      const sameRecurring =
+        (existing.recurring?.interval ?? null) ===
+        (params.recurring?.interval ?? null);
       if (sameAmount && sameCurrency && sameRecurring && existing.active) {
         return { productId: product.id, priceId: existing.id };
       }
@@ -93,13 +206,21 @@ async function ensureProductAndPrice(stripe: Stripe, params: {
 async function main() {
   const secret = process.env.STRIPE_SECRET_KEY ?? '';
   const currency = (process.env.STRIPE_CURRENCY ?? 'usd').toLowerCase();
-  const stripe = secret ? new Stripe(secret, { apiVersion: '2024-06-20' as Stripe.LatestApiVersion }) : null;
+  const stripe = secret
+    ? new Stripe(secret, {
+        apiVersion: '2024-06-20' as Stripe.LatestApiVersion,
+      })
+    : null;
 
-  console.log(`[seed-billing] Stripe sync: ${stripe ? 'enabled' : 'disabled (no STRIPE_SECRET_KEY)'}`);
+  console.log(
+    `[seed-billing] Stripe sync: ${stripe ? 'enabled' : 'disabled (no STRIPE_SECRET_KEY)'}`,
+  );
 
   // ---- Packages ----
   for (const p of PACKAGES) {
-    const existing = await prisma.zoomCreditPackage.findFirst({ where: { name: p.name } });
+    const existing = await prisma.zoomCreditPackage.findFirst({
+      where: { name: p.name },
+    });
     let stripeProductId: string | null = existing?.stripeProductId ?? null;
     let stripePriceId: string | null = existing?.stripePriceId ?? null;
     if (stripe) {
@@ -155,7 +276,9 @@ async function main() {
 
   // ---- Plans ----
   for (const plan of PLANS) {
-    const existing = await prisma.subscriptionPlan.findFirst({ where: { tier: plan.tier } });
+    const existing = await prisma.subscriptionPlan.findFirst({
+      where: { tier: plan.tier },
+    });
     let stripeProductId: string | null = existing?.stripeProductId ?? null;
     let stripePriceId: string | null = existing?.stripePriceId ?? null;
     if (stripe && plan.priceCents > 0) {
@@ -165,7 +288,10 @@ async function main() {
         currency,
         productId: stripeProductId,
         priceId: stripePriceId,
-        recurring: { interval: plan.interval === SubscriptionInterval.YEARLY ? 'year' : 'month' },
+        recurring: {
+          interval:
+            plan.interval === SubscriptionInterval.YEARLY ? 'year' : 'month',
+        },
         metadata: { kind: 'plan', tier: plan.tier },
       });
       stripeProductId = synced.productId;
@@ -189,7 +315,10 @@ async function main() {
       stripePriceId,
     };
     if (existing) {
-      await prisma.subscriptionPlan.update({ where: { id: existing.id }, data });
+      await prisma.subscriptionPlan.update({
+        where: { id: existing.id },
+        data,
+      });
       console.log(`[seed-billing] updated plan ${plan.name}`);
     } else {
       await prisma.subscriptionPlan.create({ data });
@@ -199,9 +328,14 @@ async function main() {
 
   // ---- Sample analytics data (development only) ----
   if (process.env.SEED_BILLING_SAMPLES === '1') {
-    const users = await prisma.user.findMany({ take: 5, orderBy: { createdAt: 'asc' } });
+    const users = await prisma.user.findMany({
+      take: 5,
+      orderBy: { createdAt: 'asc' },
+    });
     const pkgs = await prisma.zoomCreditPackage.findMany();
-    const plans = await prisma.subscriptionPlan.findMany({ where: { priceCents: { gt: 0 } } });
+    const plans = await prisma.subscriptionPlan.findMany({
+      where: { priceCents: { gt: 0 } },
+    });
     const feePct = Number(process.env.PLATFORM_FEE_PERCENT ?? '10');
 
     let count = 0;
@@ -229,7 +363,9 @@ async function main() {
       }
       // attach a fake subscription to the first user
       if (u === users[0] && plans.length > 0) {
-        const plan = plans.find((p) => p.interval === SubscriptionInterval.MONTHLY) ?? plans[0];
+        const plan =
+          plans.find((p) => p.interval === SubscriptionInterval.MONTHLY) ??
+          plans[0];
         const now = new Date();
         await prisma.subscription.create({
           data: {
