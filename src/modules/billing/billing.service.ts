@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import type Stripe from 'stripe';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../stripe/stripe.service';
 import { CouponsService } from './coupons.service';
 import { CreatePackageDto, UpdatePackageDto } from './dto/package.dto';
@@ -32,6 +33,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly coupons: CouponsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ---------- Packages ----------
@@ -765,6 +767,12 @@ export class BillingService {
       this.logger.log(
         `Granted ${credits} credits to ${userId} for package ${pkg.id}`,
       );
+      await this.safeNotify(userId, 'PAYMENT_RECEIVED', `Payment received: ${pkg.name}`,
+        `+${credits} Zoom credits added to your balance.`,
+        { kind: 'package', packageId: pkg.id, credits, grossCents });
+      await this.notifyAdmins('PAYMENT_RECEIVED', `New payment: ${pkg.name}`,
+        `User ${userId} purchased ${pkg.name} ($${(grossCents / 100).toFixed(2)})`,
+        { kind: 'package', userId, packageId: pkg.id, grossCents });
       return;
     }
 
@@ -784,6 +792,12 @@ export class BillingService {
           metadata: { stripeSessionId: session.id, planId: meta.planId },
         },
       });
+      await this.safeNotify(userId, 'SUBSCRIPTION_ACTIVATED', 'Subscription activated',
+        'Welcome aboard! Your subscription is now active.',
+        { planId: meta.planId, grossCents });
+      await this.notifyAdmins('SUBSCRIPTION_ACTIVATED', 'New subscription',
+        `User ${userId} activated plan ${meta.planId}.`,
+        { userId, planId: meta.planId, grossCents });
     }
 
     if (meta.couponId) {
@@ -795,6 +809,9 @@ export class BillingService {
             ? Number(meta.discountCents)
             : undefined,
         });
+        await this.safeNotify(userId, 'COUPON_REDEEMED', 'Coupon applied',
+          `Your discount was applied at checkout.`,
+          { couponId: meta.couponId, discountCents: meta.discountCents ?? null });
       } catch (err) {
         this.logger.warn(
           `Failed to record coupon redemption: ${(err as Error).message}`,
@@ -873,6 +890,9 @@ export class BillingService {
         },
       },
     });
+    await this.safeNotify(sub.userId, 'PAYMENT_RECEIVED', 'Subscription renewed',
+      `Your subscription invoice was paid ($${(grossCents / 100).toFixed(2)}).`,
+      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url });
   }
 
   private async onInvoiceFailed(invoice: Stripe.Invoice): Promise<void> {
@@ -886,6 +906,71 @@ export class BillingService {
       where: { id: sub.id },
       data: { status: SubscriptionStatus.PAST_DUE },
     });
+    await this.safeNotify(sub.userId, 'PAYMENT_FAILED', 'Payment failed',
+      'Your subscription payment could not be processed. Please update your card.',
+      { invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url });
+    await this.notifyAdmins('PAYMENT_FAILED', 'Subscription payment failed',
+      `User ${sub.userId} subscription payment failed (invoice ${invoice.id}).`,
+      { userId: sub.userId, invoiceId: invoice.id });
+  }
+
+  // ---------- notification helpers ----------
+
+  private async safeNotify(
+    userId: string,
+    type:
+      | 'PAYMENT_RECEIVED'
+      | 'PAYMENT_FAILED'
+      | 'SUBSCRIPTION_ACTIVATED'
+      | 'SUBSCRIPTION_CANCELLED'
+      | 'COUPON_REDEEMED'
+      | 'GENERIC',
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.notifications.notify({
+        userId,
+        type: type as any,
+        title,
+        body,
+        data: (data ?? {}) as Prisma.InputJsonValue,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Notification dispatch failed for user=${userId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async notifyAdmins(
+    type:
+      | 'PAYMENT_RECEIVED'
+      | 'PAYMENT_FAILED'
+      | 'SUBSCRIPTION_ACTIVATED'
+      | 'SUBSCRIPTION_CANCELLED'
+      | 'COUPON_REDEEMED'
+      | 'GENERIC',
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN' as any, isActive: true },
+        select: { id: true },
+      });
+      await Promise.all(
+        admins.map((a) =>
+          this.safeNotify(a.id, type, title, body, data),
+        ),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Admin broadcast failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   // ---------- helpers ----------

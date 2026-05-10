@@ -14,6 +14,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { MailModule } from './modules/mail/mail.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 import { ResourcesModule } from './modules/resources/resources.module';
@@ -55,6 +56,7 @@ import { StorageModule } from './storage/storage.module';
     AcademiesModule,
     StripeModule,
     BillingModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

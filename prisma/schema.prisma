@@ -113,9 +113,37 @@ model User {
   academyMemberships                 AcademyMembership[]
   membershipActions                  AcademyMembership[]     @relation("AcademyMembershipActionedBy")
   reviewedAcademies                  Academy[]               @relation("AcademyReviewedBy")
+  notifications                      Notification[]
 
   @@index([role])
   @@index([status])
+}
+
+enum NotificationType {
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_CANCELLED
+  COUPON_REDEEMED
+  MEMBERSHIP_PENDING
+  MEMBERSHIP_APPROVED
+  MEMBERSHIP_REJECTED
+  GENERIC
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?          @db.Text
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 model RefreshToken {

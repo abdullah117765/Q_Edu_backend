@@ -20,6 +20,7 @@ import { PaginatedResponse } from '../../common/interfaces/pagination.interface'
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { AcademiesService } from '../academies/academies.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AdminsQueryDto } from './dto/admins-query.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -63,6 +64,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly academiesService: AcademiesService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
@@ -590,6 +592,38 @@ export class UsersService {
           actionedById: currentUser?.id,
         },
       });
+
+      const notifyType =
+        dto.status === UserStatus.APPROVED
+          ? 'MEMBERSHIP_APPROVED'
+          : dto.status === UserStatus.REJECTED
+            ? 'MEMBERSHIP_REJECTED'
+            : 'MEMBERSHIP_PENDING';
+      const notifyTitle =
+        dto.status === UserStatus.APPROVED
+          ? 'You have been approved'
+          : dto.status === UserStatus.REJECTED
+            ? 'Your access was rejected'
+            : 'Your application is pending review';
+      const notifyBody =
+        dto.status === UserStatus.REJECTED && updateData.rejectionReason
+          ? `Reason: ${updateData.rejectionReason}`
+          : dto.status === UserStatus.APPROVED
+            ? 'You can now sign in and access your academy.'
+            : 'We are reviewing your application.';
+      try {
+        await this.notifications.notify({
+          userId: id,
+          type: notifyType as any,
+          title: notifyTitle,
+          body: notifyBody,
+          data: { previousStatus: existing.status, newStatus: dto.status },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Status notification dispatch failed: ${(err as Error).message}`,
+        );
+      }
     }
 
     this.logger.log(`User ${id} status changed to ${dto.status}`);
