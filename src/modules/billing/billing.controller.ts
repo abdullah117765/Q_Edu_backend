@@ -42,14 +42,14 @@ export class BillingController {
   // ---------- Owner billing catalog ----------
 
   @Get('packages')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'List active credit packages' })
   listPackages() {
     return this.billing.listPackages({ activeOnly: true });
   }
 
   @Get('plans')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'List active subscription plans (academies)' })
   listPlans() {
     return this.billing.listPlans({ activeOnly: true });
@@ -58,7 +58,7 @@ export class BillingController {
   // ---------- Self-service ----------
 
   @Get('me')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({
     summary:
       'My current billing overview (balance, subscription, recent payments)',
@@ -189,6 +189,7 @@ export class BillingController {
     @Query('subscriptionId') subscriptionId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('search') search?: string,
   ) {
     return this.billing.listPaymentsAdmin({
       page: page ? Number(page) : undefined,
@@ -200,6 +201,7 @@ export class BillingController {
       subscriptionId,
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
+      search: search || undefined,
     });
   }
 
@@ -227,18 +229,20 @@ export class BillingController {
 
   @Get('admin/subscriptions')
   @Auth(Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'List all subscriptions (paginated)' })
+  @ApiOperation({ summary: 'List all subscriptions (paginated, filterable)' })
   listAdminSubscriptions(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
+    @Query('search') search?: string,
   ) {
     return this.billing.listSubscriptionsAdmin({
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       status: status as never,
       userId,
+      search: search || undefined,
     });
   }
 
@@ -256,9 +260,21 @@ export class BillingController {
 
   @Get('admin/coupons')
   @Auth(Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'List all coupons' })
-  listAdminCoupons() {
-    return this.coupons.list();
+  @ApiOperation({ summary: 'List all coupons (paginated, filterable)' })
+  listAdminCoupons(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('appliesTo') appliesTo?: string,
+    @Query('active') active?: string,
+  ) {
+    return this.coupons.list({
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 25,
+      search: search || undefined,
+      appliesTo: appliesTo || undefined,
+      activeOnly: active === 'true' ? true : active === 'false' ? false : undefined,
+    });
   }
 
   @Post('admin/coupons')
@@ -283,7 +299,7 @@ export class BillingController {
   }
 
   @Get('coupons/marketing')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
   @ApiOperation({ summary: 'Active highlighted coupons for marketing banners' })
   listMarketingCoupons() {
     return this.coupons.getActiveMarketing();

@@ -503,6 +503,7 @@ export class BillingService {
     subscriptionId?: string;
     from?: Date;
     to?: Date;
+    search?: string;
   }) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
@@ -517,6 +518,15 @@ export class BillingService {
         ...(opts.from ? { gte: opts.from } : {}),
         ...(opts.to ? { lte: opts.to } : {}),
       };
+    }
+    if (opts.search) {
+      const s = opts.search.trim();
+      where.OR = [
+        { reference: { contains: s } },
+        { user: { email: { contains: s } } },
+        { user: { firstName: { contains: s } } },
+        { user: { lastName: { contains: s } } },
+      ];
     }
     const [items, total] = await Promise.all([
       this.prisma.payment.findMany({
@@ -624,12 +634,23 @@ export class BillingService {
     limit?: number;
     status?: SubscriptionStatus;
     userId?: string;
+    search?: string;
   }) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
     const where: Prisma.SubscriptionWhereInput = {};
     if (opts.status) where.status = opts.status;
     if (opts.userId) where.userId = opts.userId;
+    if (opts.search) {
+      const s = opts.search.trim();
+      where.user = {
+        OR: [
+          { email: { contains: s } },
+          { firstName: { contains: s } },
+          { lastName: { contains: s } },
+        ],
+      };
+    }
     const [items, total] = await Promise.all([
       this.prisma.subscription.findMany({
         where,

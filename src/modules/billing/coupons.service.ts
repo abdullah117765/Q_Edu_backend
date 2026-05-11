@@ -32,7 +32,19 @@ export class CouponsService {
 
   // ----- Admin CRUD -----
 
-  list(opts: { activeOnly?: boolean; marketingOnly?: boolean } = {}) {
+  async list(opts: {
+    activeOnly?: boolean;
+    marketingOnly?: boolean;
+    page?: number;
+    limit?: number;
+    search?: string;
+    appliesTo?: string;
+  } = {}) {
+    // When called without pagination opts (e.g. marketing banner), return raw array
+    const paginate = opts.page !== undefined || opts.limit !== undefined;
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 25));
+
     const where: Prisma.CouponWhereInput = {};
     if (opts.activeOnly) where.active = true;
     if (opts.marketingOnly) {
@@ -42,10 +54,35 @@ export class CouponsService {
         { OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] },
       ];
     }
-    return this.prisma.coupon.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }],
-    });
+    if (opts.appliesTo && opts.appliesTo !== 'ALL') {
+      where.appliesTo = opts.appliesTo as any;
+    }
+    if (opts.search) {
+      const s = opts.search.trim();
+      where.OR = [
+        { code: { contains: s } },
+        { name: { contains: s } },
+        { description: { contains: s } },
+      ];
+    }
+
+    if (!paginate) {
+      return this.prisma.coupon.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }],
+      });
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.coupon.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.coupon.count({ where }),
+    ]);
+    return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
   }
 
   async create(dto: CreateCouponDto): Promise<Coupon> {
