@@ -247,6 +247,7 @@ export class BillingService {
       code: dto.couponCode,
       appliesToKind: 'package',
       grossCents,
+      userId,
     });
     const split = this.stripe.splitAmountCents(grossCents);
     const session = await this.stripe.createCheckoutSession({
@@ -306,6 +307,7 @@ export class BillingService {
       code: dto.couponCode,
       appliesToKind: 'plan',
       grossCents: plan.priceCents,
+      userId,
     });
     const session = await this.stripe.createCheckoutSession({
       customerId: customer.stripeCustomerId,

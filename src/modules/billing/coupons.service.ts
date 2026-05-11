@@ -192,6 +192,7 @@ export class CouponsService {
     code?: string;
     appliesToKind: 'package' | 'plan';
     grossCents: number;
+    userId?: string;
   }): Promise<ResolvedCoupon | null> {
     if (!opts.code) return null;
     const coupon = await this.prisma.coupon.findUnique({
@@ -209,6 +210,16 @@ export class CouponsService {
       coupon.timesRedeemed >= coupon.maxRedemptions
     ) {
       throw new BadRequestException('Coupon redemption limit reached.');
+    }
+    // Per-user single-use enforcement
+    if (opts.userId) {
+      const alreadyUsed = await this.prisma.couponRedemption.findFirst({
+        where: { couponId: coupon.id, userId: opts.userId },
+        select: { id: true },
+      });
+      if (alreadyUsed) {
+        throw new BadRequestException('You have already redeemed this coupon.');
+      }
     }
     if (
       coupon.appliesTo === CouponAppliesTo.PACKAGES &&
