@@ -1,17 +1,17 @@
 ﻿import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
-  AcademyStatus,
-  ClassStatus,
-  Role as PrismaRole,
-  UserStatus,
-  ZoomCreditTransactionType,
+    AcademyStatus,
+    ClassStatus,
+    Role as PrismaRole,
+    UserStatus,
+    ZoomCreditTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
-import { ZoomCreditTransactionsQueryDto } from '../zoom-credits/dto/zoom-credit-transactions-query.dto';
-import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 import { UserEntity } from '../users/entities/user.entity';
+import { ZoomCreditTransactionsQueryDto } from '../zoom-credits/dto/zoom-credit-transactions-query.dto';
 import { ZoomCreditTransactionEntity } from '../zoom-credits/entities/zoom-credit-transaction.entity';
+import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
+import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 
 const DEFAULT_PLAN_NAME = 'Professional';
 const DEFAULT_STUDENT_LIMIT = 200;
@@ -26,26 +26,47 @@ export class DashboardService {
   ) {}
 
   async getOverview(user: UserEntity): Promise<DashboardOverviewDto> {
+    let ownerAcademy: { id: string; name: string; createdAt: Date } | null =
+      null;
+
     if (user.role === PrismaRole.ACADEMY_OWNER) {
       const academy = await this.prisma.academy.findUnique({
         where: { ownerId: user.id },
-        select: { status: true, rejectionReason: true },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          rejectionReason: true,
+          createdAt: true,
+        },
       });
 
       if (!academy) {
-        throw new ForbiddenException('Complete your academy onboarding before accessing the dashboard.');
+        throw new ForbiddenException(
+          'Complete your academy onboarding before accessing the dashboard.',
+        );
       }
 
       if (academy.status === AcademyStatus.PENDING) {
-        throw new ForbiddenException('Your academy submission is pending approval.');
+        throw new ForbiddenException(
+          'Your academy submission is pending approval.',
+        );
       }
 
       if (academy.status === AcademyStatus.REJECTED) {
         const reasonMessage = academy.rejectionReason
           ? ` Reason: ${academy.rejectionReason}`
           : '';
-        throw new ForbiddenException(`Your academy submission was rejected.${reasonMessage}`);
+        throw new ForbiddenException(
+          `Your academy submission was rejected.${reasonMessage}`,
+        );
       }
+
+      ownerAcademy = {
+        id: academy.id,
+        name: academy.name,
+        createdAt: academy.createdAt,
+      };
     }
 
     const now = new Date();
@@ -197,15 +218,15 @@ export class DashboardService {
 
     return {
       academy: {
-        id: user.id,
-        name: this.deriveAcademyName(user),
+        id: ownerAcademy?.id ?? user.id,
+        name: ownerAcademy?.name ?? this.deriveAcademyName(user),
         ownerName: this.buildDisplayName(
           user.firstName,
           user.lastName,
           user.email,
         ),
         ownerEmail: user.email,
-        createdAt: user.createdAt,
+        createdAt: ownerAcademy?.createdAt ?? user.createdAt,
         updatedAt: now,
       },
       totals: {
