@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { SuperAdminBootstrap } from './bootstrap/super-admin.bootstrap';
+import { WelcomeCouponBootstrap } from './bootstrap/welcome-coupon.bootstrap';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { AcademiesModule } from './modules/academies/academies.module';
@@ -64,6 +65,7 @@ import { StorageModule } from './storage/storage.module';
   providers: [
     AppService,
     SuperAdminBootstrap,
+    WelcomeCouponBootstrap,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
