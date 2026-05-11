@@ -33,6 +33,10 @@ describe('UsersService - onboarding', () => {
     deleteFile: jest.fn(),
   };
 
+  const notificationsMock = {
+    notify: jest.fn(),
+  };
+
   let service: UsersService;
 
   beforeEach(() => {
@@ -46,6 +50,7 @@ describe('UsersService - onboarding', () => {
       prismaMock as unknown as any,
       academiesServiceMock as unknown as any,
       storageMock as unknown as any,
+      notificationsMock as unknown as any,
     );
   });
 

@@ -14,6 +14,12 @@ export class UserAcademyMembershipSummary {
   @ApiPropertyOptional()
   academyName?: string | null;
 
+  @ApiPropertyOptional()
+  academyOwnerId?: string | null;
+
+  @ApiPropertyOptional()
+  academyOwnerName?: string | null;
+
   @ApiProperty({ enum: AcademyMembershipStatus })
   status!: AcademyMembershipStatus;
 }

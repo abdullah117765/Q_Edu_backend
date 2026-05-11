@@ -103,15 +103,23 @@ export class UsersController {
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
   @ApiOperation({ summary: 'List teachers with pagination and filters' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findTeachers(@Query() query: TeachersQueryDto, @Req() request: Request) {
+  async findTeachers(@Query() query: TeachersQueryDto, @Req() request: Request) {
     const currentUser = request['user'] as UserEntity | undefined;
     if (currentUser?.role === Role.STUDENT) {
       query.status = UserStatus.APPROVED;
     }
-    return this.usersService.findTeachers(
+    const result = await this.usersService.findTeachers(
       query,
       currentUser ? { id: currentUser.id, role: currentUser.role } : undefined,
     );
+
+    if (currentUser?.role === Role.STUDENT) {
+      result.data = result.data.map((user) =>
+        this.toPublicTeacherDirectoryUser(user),
+      ) as typeof result.data;
+    }
+
+    return result;
   }
 
   @Get('students')
@@ -132,16 +140,53 @@ export class UsersController {
     );
 
     if (currentUser?.role === Role.TEACHER) {
-      result.data = result.data.map((user) => ({
-        ...user,
-        email: this.maskEmail(user.email),
-      })) as typeof result.data;
+      result.data = result.data.map((user) =>
+        this.toTeacherStudentDirectoryUser(user),
+      ) as typeof result.data;
     }
     return result;
   }
 
-  private maskEmail(email?: string | null): string | null {
-    if (!email) return email ?? null;
+  private toTeacherStudentDirectoryUser(user: UserEntity): UserEntity {
+    return this.omitSensitiveDirectoryFields({
+      ...user,
+      email: this.maskEmail(user.email),
+    });
+  }
+
+  private toPublicTeacherDirectoryUser(user: UserEntity): UserEntity {
+    return this.omitSensitiveDirectoryFields(user);
+  }
+
+  private omitSensitiveDirectoryFields(user: UserEntity): UserEntity {
+    const {
+      phoneNumber,
+      gender,
+      dateOfBirth,
+      addressStreet,
+      addressHouse,
+      addressCity,
+      addressState,
+      addressCountry,
+      rejectionReason,
+      profilePhotoKey,
+      ...safeUser
+    } = user;
+    void phoneNumber;
+    void gender;
+    void dateOfBirth;
+    void addressStreet;
+    void addressHouse;
+    void addressCity;
+    void addressState;
+    void addressCountry;
+    void rejectionReason;
+    void profilePhotoKey;
+    return safeUser as UserEntity;
+  }
+
+  private maskEmail(email?: string | null): string {
+    if (!email) return '';
     const [local, domain] = email.split('@');
     if (!domain) return email;
     if (local.length <= 1) return `${local}***@${domain}`;

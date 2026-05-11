@@ -1,17 +1,20 @@
 import {
-    BadRequestException,
-    ConflictException,
-    ForbiddenException,
-    Injectable,
-    Logger,
-    NotFoundException,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
-    AcademyMembershipStatus,
-    Prisma,
-    Role as PrismaRole,
-    UserStatus as PrismaUserStatus,
-    User,
+  AcademyMembershipStatus,
+  Prisma,
+  Role as PrismaRole,
+  UserStatus as PrismaUserStatus,
+  User,
+  ZoomCreditAuditAction,
+  ZoomCreditTransactionType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { UploadedFile } from '../../common/interfaces/uploaded-file.interface';
@@ -65,6 +68,7 @@ export class UsersService {
     private readonly academiesService: AcademiesService,
     private readonly storage: StorageService,
     private readonly notifications: NotificationsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserEntity> {
@@ -106,6 +110,7 @@ export class UsersService {
           name: dto.academyName,
           description: dto.academyDescription,
         });
+        await this.grantInitialAcademyOwnerCredits(user.id);
       } catch (error) {
         this.logger.error(
           `Failed to provision academy for owner ${user.id}: ${(error as Error).message}`,
@@ -167,6 +172,63 @@ export class UsersService {
         actionedById: currentUser.id,
       },
       update: {},
+    });
+  }
+
+  private async grantInitialAcademyOwnerCredits(userId: string): Promise<void> {
+    const initialCredits =
+      this.configService.get<number>(
+        'billing.academyOwnerInitialFreeCredits',
+      ) ?? 100;
+
+    if (initialCredits <= 0) {
+      return;
+    }
+
+    const existingGrant = await this.prisma.zoomCreditTransaction.findFirst({
+      where: {
+        userId,
+        type: ZoomCreditTransactionType.CREDIT,
+        reason: 'Initial academy owner credit grant',
+      },
+      select: { id: true },
+    });
+
+    if (existingGrant) {
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const balance = await tx.zoomCreditBalance.upsert({
+        where: { userId },
+        create: { userId, balance: initialCredits },
+        update: { balance: { increment: initialCredits } },
+      });
+
+      const transaction = await tx.zoomCreditTransaction.create({
+        data: {
+          userId,
+          type: ZoomCreditTransactionType.CREDIT,
+          amount: initialCredits,
+          runningBalance: balance.balance,
+          reason: 'Initial academy owner credit grant',
+          metadata: {
+            source: 'academy_owner.initial_grant',
+            initialCredits,
+          },
+        },
+      });
+
+      await tx.zoomCreditAuditLog.create({
+        data: {
+          transactionId: transaction.id,
+          action: ZoomCreditAuditAction.CREATED,
+          details: {
+            source: 'academy_owner.initial_grant',
+            initialCredits,
+          },
+        },
+      });
     });
   }
 
@@ -260,13 +322,32 @@ export class UsersService {
           skip,
           take: limit,
           include: {
+            _count: {
+              select: {
+                teachingClasses: true,
+                classParticipants: true,
+                resources: true,
+              },
+            },
             ownedAcademy: { select: { id: true, name: true, status: true } },
             academyMemberships: {
-              where: { status: AcademyMembershipStatus.APPROVED },
               select: {
                 academyId: true,
                 status: true,
-                academy: { select: { id: true, name: true } },
+                academy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    ownerId: true,
+                    owner: {
+                      select: {
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -290,7 +371,16 @@ export class UsersService {
           academyMemberships?: Array<{
             academyId: string;
             status: AcademyMembershipStatus;
-            academy?: { id: string; name: string | null };
+            academy?: {
+              id: string;
+              name: string | null;
+              ownerId?: string | null;
+              owner?: {
+                firstName: string | null;
+                lastName: string | null;
+                email: string | null;
+              } | null;
+            };
           }>;
           ownedAcademy?: {
             id: string;
@@ -303,6 +393,8 @@ export class UsersService {
         entity.academies = academyMemberships.map((membership) => ({
           academyId: membership.academyId,
           academyName: membership.academy?.name ?? null,
+          academyOwnerId: membership.academy?.ownerId ?? null,
+          academyOwnerName: this.buildDisplayName(membership.academy?.owner),
           status: membership.status,
         }));
       }
@@ -734,25 +826,41 @@ export class UsersService {
     }
 
     const skip = (query.page - 1) * query.limit;
+    const membershipWhere =
+      currentUser?.role === Role.SUPER_ADMIN
+        ? undefined
+        : { status: AcademyMembershipStatus.APPROVED };
+    const membershipInclude = {
+      ...(membershipWhere ? { where: membershipWhere } : {}),
+      select: {
+        academyId: true,
+        status: true,
+        academy: {
+          select: {
+            id: true,
+            name: true,
+            ownerId: true,
+            owner: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    };
     const include =
       role === Role.TEACHER
-        ? { _count: { select: { teachingClasses: true } } }
+        ? {
+            _count: { select: { teachingClasses: true, resources: true } },
+            academyMemberships: membershipInclude,
+          }
         : role === Role.STUDENT
           ? {
               _count: { select: { classParticipants: true } },
-              academyMemberships: {
-                where: { status: AcademyMembershipStatus.APPROVED },
-                select: {
-                  academyId: true,
-                  status: true,
-                  academy: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                },
-              },
+              academyMemberships: membershipInclude,
             }
           : role === Role.ACADEMY_OWNER
             ? {
@@ -791,7 +899,16 @@ export class UsersService {
           academyMemberships?: Array<{
             academyId: string;
             status: AcademyMembershipStatus;
-            academy?: { id: string; name: string | null };
+            academy?: {
+              id: string;
+              name: string | null;
+              ownerId?: string | null;
+              owner?: {
+                firstName: string | null;
+                lastName: string | null;
+                email: string | null;
+              } | null;
+            };
           }>;
           ownedAcademy?: {
             id: string;
@@ -804,6 +921,8 @@ export class UsersService {
         entity.academies = academyMemberships.map((membership) => ({
           academyId: membership.academyId,
           academyName: membership.academy?.name ?? null,
+          academyOwnerId: membership.academy?.ownerId ?? null,
+          academyOwnerName: this.buildDisplayName(membership.academy?.owner),
           status: membership.status,
         }));
       }
@@ -941,6 +1060,24 @@ export class UsersService {
       rejected: statusCounts[PrismaUserStatus.REJECTED] ?? 0,
       inactive: inactiveCount,
     };
+  }
+
+  private buildDisplayName(
+    user?: {
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+    } | null,
+  ): string | null {
+    if (!user) {
+      return null;
+    }
+
+    const fullName = [user.firstName, user.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return fullName || user.email || null;
   }
 
   private async hashPassword(password: string): Promise<string> {

@@ -1,8 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AcademyMembershipStatus, Prisma, ResourceVisibility } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadedFile } from '../../common/interfaces/uploaded-file.interface';
+import { StorageService } from '../../storage/storage.service';
 import { ResourceEntity } from './entities/resource.entity';
 import { CreateResourceDto } from './dto/create-resource.dto';
+import { CreateUploadedResourceDto } from './dto/create-uploaded-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourcesQueryDto } from './dto/resources-query.dto';
 import { PaginatedResourcesResponseDto } from './dto/paginated-resources-response.dto';
@@ -38,7 +41,10 @@ type ResourceWithRelations = {
 
 @Injectable()
 export class ResourcesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async create(uploaderId: string, dto: CreateResourceDto): Promise<ResourceEntity> {
     const uploader = await this.prisma.user.findUnique({
@@ -53,21 +59,33 @@ export class ResourcesService {
       throw new BadRequestException('academyId is required to create a resource.');
     }
 
+    this.ensureVisibilityAllowedForRole(
+      uploader.role as Role,
+      dto.visibility ?? ResourceVisibility.ACADEMY,
+    );
+
     const scope = await this.resolveAccessibleAcademyIdsForRole(uploader.id, uploader.role as Role);
     if (!scope.unlimited && !scope.academyIds.includes(dto.academyId)) {
       throw new ForbiddenException('You do not have access to the selected academy.');
     }
 
+    if (uploader.role === Role.TEACHER && dto.visibility === ResourceVisibility.PRIVATE && !dto.classId) {
+      throw new BadRequestException('Class-only teacher resources must be linked to a class.');
+    }
+
     if (dto.classId) {
       const cls = await this.prisma.class.findUnique({
         where: { id: dto.classId },
-        select: { academyId: true },
+        select: { academyId: true, teacherId: true },
       });
       if (!cls) {
         throw new NotFoundException('Associated class not found.');
       }
       if (cls.academyId !== dto.academyId) {
         throw new BadRequestException('Class is not part of the specified academy.');
+      }
+      if (uploader.role === Role.TEACHER && cls.teacherId !== uploader.id) {
+        throw new ForbiddenException('Teachers can only link resources to classes they teach.');
       }
     }
 
@@ -93,6 +111,37 @@ export class ResourcesService {
     });
 
     return this.toEntity(resource);
+  }
+
+  async createFromUpload(
+    uploaderId: string,
+    dto: CreateUploadedResourceDto,
+    file: UploadedFile,
+  ): Promise<ResourceEntity> {
+    if (!file?.buffer) {
+      throw new BadRequestException('A resource file is required.');
+    }
+
+    const stored = await this.storage.saveFile({
+      buffer: file.buffer,
+      originalName: file.originalname ?? 'resource',
+      directory: 'resources',
+    });
+
+    try {
+      return await this.create(uploaderId, {
+        ...dto,
+        classId: this.normaliseOptionalId(dto.classId),
+        fileKey: stored.key,
+        fileUrl: stored.url,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        fileType: dto.fileType ?? this.inferFileType(file),
+      });
+    } catch (error) {
+      await this.storage.deleteFile(stored.key);
+      throw error;
+    }
   }
 
   async findAll(query: ResourcesQueryDto, currentUser?: UserEntity): Promise<PaginatedResourcesResponseDto> {
@@ -238,16 +287,29 @@ export class ResourcesService {
       throw new BadRequestException('Resource academy cannot be changed.');
     }
 
+    if (dto.visibility) {
+      this.ensureVisibilityAllowedForRole(currentUser.role, dto.visibility);
+    }
+
+    const nextVisibility = dto.visibility ?? existing.visibility;
+    const nextClassId = dto.classId === undefined ? existing.classId : dto.classId;
+    if (currentUser.role === Role.TEACHER && nextVisibility === ResourceVisibility.PRIVATE && !nextClassId) {
+      throw new BadRequestException('Class-only teacher resources must be linked to a class.');
+    }
+
     if (dto.classId) {
       const cls = await this.prisma.class.findUnique({
         where: { id: dto.classId },
-        select: { academyId: true },
+        select: { academyId: true, teacherId: true },
       });
       if (!cls) {
         throw new NotFoundException('Associated class not found.');
       }
       if (existing.academyId && cls.academyId !== existing.academyId) {
         throw new BadRequestException('Class is not part of the resource academy.');
+      }
+      if (currentUser.role === Role.TEACHER && cls.teacherId !== currentUser.id) {
+        throw new ForbiddenException('Teachers can only link resources to classes they teach.');
       }
     }
 
@@ -274,6 +336,54 @@ export class ResourcesService {
     return this.toEntity(resource);
   }
 
+  async updateWithUpload(
+    id: string,
+    dto: CreateUploadedResourceDto,
+    file: UploadedFile,
+    currentUser: UserEntity,
+  ): Promise<ResourceEntity> {
+    if (!file?.buffer) {
+      throw new BadRequestException('A replacement file is required.');
+    }
+
+    const existing = await this.prisma.resource.findUnique({
+      where: { id },
+      select: { fileKey: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Resource not found.');
+    }
+
+    const stored = await this.storage.saveFile({
+      buffer: file.buffer,
+      originalName: file.originalname ?? 'resource',
+      directory: 'resources',
+    });
+
+    try {
+      const updated = await this.update(
+        id,
+        {
+          ...dto,
+          classId: this.normaliseOptionalId(dto.classId),
+          fileKey: stored.key,
+          fileUrl: stored.url,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          fileType: dto.fileType ?? this.inferFileType(file),
+        },
+        currentUser,
+      );
+      if (existing.fileKey && existing.fileKey !== stored.key) {
+        await this.storage.deleteFile(existing.fileKey);
+      }
+      return updated;
+    } catch (error) {
+      await this.storage.deleteFile(stored.key);
+      throw error;
+    }
+  }
+
   async remove(id: string, currentUser: UserEntity): Promise<void> {
     const existing = await this.prisma.resource.findUnique({ where: { id } });
     if (!existing) {
@@ -298,6 +408,7 @@ export class ResourcesService {
     }
 
     await this.prisma.resource.delete({ where: { id } });
+    await this.storage.deleteFile(existing.fileKey);
   }
 
   private async resolveAccessibleAcademyIdsForRole(
@@ -378,6 +489,37 @@ export class ResourcesService {
       default:
         return { uploaderId: user.id };
     }
+  }
+
+  private normaliseOptionalId(value?: string | null): string | undefined {
+    const normalised = value?.trim();
+    if (!normalised || normalised === 'all') {
+      return undefined;
+    }
+    return normalised;
+  }
+
+  private ensureVisibilityAllowedForRole(
+    role: Role | undefined,
+    visibility: ResourceVisibility,
+  ): void {
+    if (visibility === ResourceVisibility.PUBLIC && role !== Role.SUPER_ADMIN) {
+      throw new BadRequestException(
+        'Only super admins can create platform-wide public resources.',
+      );
+    }
+  }
+
+  private inferFileType(file: UploadedFile): string {
+    const mimeType = file.mimetype?.toLowerCase() ?? '';
+    const name = file.originalname?.toLowerCase() ?? '';
+
+    if (mimeType.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.includes('zip') || /\.(zip|rar|7z)$/i.test(name)) return 'archive';
+    if (mimeType.includes('json') || /\.(js|ts|tsx|jsx|py|java|cs|html|css)$/i.test(name)) return 'code';
+    return 'document';
   }
 
   private toEntity(resource: ResourceWithRelations): ResourceEntity {

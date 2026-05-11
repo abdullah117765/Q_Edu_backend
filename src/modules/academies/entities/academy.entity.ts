@@ -106,11 +106,44 @@ export class AcademyMembershipUserSummary {
   @ApiProperty()
   email!: string;
 
+  @ApiPropertyOptional()
+  phoneNumber?: string | null;
+
+  @ApiPropertyOptional()
+  gender?: string | null;
+
+  @ApiPropertyOptional()
+  bio?: string | null;
+
+  @ApiPropertyOptional()
+  dateOfBirth?: Date | null;
+
+  @ApiPropertyOptional()
+  addressStreet?: string | null;
+
+  @ApiPropertyOptional()
+  addressHouse?: string | null;
+
+  @ApiPropertyOptional()
+  addressCity?: string | null;
+
+  @ApiPropertyOptional()
+  addressState?: string | null;
+
+  @ApiPropertyOptional()
+  addressCountry?: string | null;
+
+  @ApiPropertyOptional()
+  profilePhotoUrl?: string | null;
+
   @ApiProperty({ enum: PrismaRole })
   role!: PrismaRole;
 
   @ApiProperty({ enum: PrismaUserStatus })
   status!: PrismaUserStatus;
+
+  @ApiPropertyOptional({ type: Object })
+  _count?: Record<string, number> | null;
 }
 
 export class AcademyMembershipEntity {

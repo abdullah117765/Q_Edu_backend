@@ -23,6 +23,7 @@ import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
 import { Role } from '../users/entities/role.enum';
+import { CancelClassDto } from './dto/cancel-class.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
@@ -94,7 +95,7 @@ export class ClassesController {
 
   @Delete(':id')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
-  @ApiOperation({ summary: 'Delete a class and associated Zoom meeting' })
+  @ApiOperation({ summary: 'Delete an ended or cancelled class and associated Zoom meeting' })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: MessageResponseDto })
   async remove(
@@ -105,6 +106,24 @@ export class ClassesController {
       (request as RequestWithUser).user ?? {};
     await this.classesService.remove(id, actorId, actorRole);
     return { message: 'Class deleted successfully.' };
+  }
+
+  @Post(':id/cancel')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @ApiOperation({ summary: 'Cancel a scheduled class with a reason' })
+  @ApiParam({ name: 'id', description: 'Class identifier' })
+  @ApiOkResponse({ type: ClassEntity })
+  @ApiBadRequestResponse({
+    description: 'Cancellation reason missing or class cannot be cancelled',
+  })
+  async cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelClassDto,
+    @Req() request: Request,
+  ): Promise<ClassEntity> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.cancel(id, dto, actorId, actorRole);
   }
 
   @Get(':id/participants')

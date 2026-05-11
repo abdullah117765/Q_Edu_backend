@@ -1,9 +1,28 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    MaxFileSizeValidator,
+    Param,
+    ParseFilePipe,
+    Patch,
+    Post,
+    Query,
+    Req,
+    UploadedFile,
+    UnauthorizedException,
+    UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
+import { memoryStorage } from 'multer';
 import { Auth } from '../../common/decorators/auth.decorator';
+import { UploadedFile as UploadedFileType } from '../../common/interfaces/uploaded-file.interface';
 import { Role } from '../users/entities/role.enum';
 import { UserEntity } from '../users/entities/user.entity';
+import { CreateUploadedResourceDto } from './dto/create-uploaded-resource.dto';
 import { CreateResourceDto } from './dto/create-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourcesQueryDto } from './dto/resources-query.dto';
@@ -32,6 +51,29 @@ export class ResourcesController {
       throw new UnauthorizedException('Authenticated user is required to upload resources.');
     }
     return this.resourcesService.create(currentUser.id, dto);
+  }
+
+  @Post('upload')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @ApiOperation({ summary: 'Upload a local file and create a resource' })
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({ type: ResourceEntity })
+  async upload(
+    @Req() request: Request,
+    @Body() dto: CreateUploadedResourceDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 })],
+      }),
+    )
+    file: UploadedFileType,
+  ): Promise<ResourceEntity> {
+    const currentUser = (request as RequestWithUser).user;
+    if (!currentUser?.id) {
+      throw new UnauthorizedException('Authenticated user is required to upload resources.');
+    }
+    return this.resourcesService.createFromUpload(currentUser.id, dto, file);
   }
 
   @Get()
@@ -69,6 +111,31 @@ export class ResourcesController {
       throw new UnauthorizedException('Authenticated user is required to update resources.');
     }
     return this.resourcesService.update(id, dto, currentUser);
+  }
+
+  @Patch(':id/upload')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @ApiOperation({ summary: 'Replace a resource file and update metadata' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'Resource identifier' })
+  @ApiOkResponse({ type: ResourceEntity })
+  updateWithUpload(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Body() dto: CreateUploadedResourceDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 })],
+      }),
+    )
+    file: UploadedFileType,
+  ): Promise<ResourceEntity> {
+    const currentUser = (request as RequestWithUser).user;
+    if (!currentUser?.id) {
+      throw new UnauthorizedException('Authenticated user is required to update resources.');
+    }
+    return this.resourcesService.updateWithUpload(id, dto, file, currentUser);
   }
 
   @Delete(':id')

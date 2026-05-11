@@ -18,6 +18,17 @@ const ensureLeadingSlash = (value: string): string => {
   return value.startsWith('/') ? value : `/${value}`;
 };
 
+const parseNonNegativeInteger = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+};
+
 export default () => ({
   app: {
     env: process.env.NODE_ENV ?? 'development',
@@ -80,6 +91,18 @@ export default () => ({
   cors: {
     allowedOrigins: parseAllowedOrigins(
       process.env.CORS_ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGINS ?? '',
+    ),
+  },
+  classes: {
+    scheduledClassCreditCost: parseNonNegativeInteger(
+      process.env.ZOOM_CLASS_CREDIT_COST,
+      1,
+    ),
+  },
+  billing: {
+    academyOwnerInitialFreeCredits: parseNonNegativeInteger(
+      process.env.ACADEMY_OWNER_INITIAL_FREE_CREDITS,
+      100,
     ),
   },
   storage: (() => {

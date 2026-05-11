@@ -112,7 +112,10 @@ export class CreateClassDto {
   @IsNotEmpty()
   timezone!: string;
 
-  @ApiPropertyOptional({ description: 'Optional allocated credits for the class' })
+  @ApiPropertyOptional({
+    description:
+      'Deprecated for creation. Scheduling credit cost is controlled by ZOOM_CLASS_CREDIT_COST.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

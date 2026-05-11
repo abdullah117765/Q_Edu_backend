@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AcademyMemberRole,
   AcademyMembershipStatus,
@@ -25,6 +26,7 @@ import {
   ZoomParticipant,
 } from '../zoom/interfaces/zoom.interface';
 import { ZoomService } from '../zoom/zoom.service';
+import { CancelClassDto } from './dto/cancel-class.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
@@ -43,13 +45,21 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
+  private readonly scheduledClassCreditCost: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly zoomService: ZoomService,
     private readonly zoomCreditsService: ZoomCreditsService,
     private readonly platformSettingsService: PlatformSettingsService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const configuredCreditCost =
+      this.configService.get<number>('classes.scheduledClassCreditCost') ?? 1;
+    this.scheduledClassCreditCost = Number.isFinite(configuredCreditCost)
+      ? Math.max(0, Math.trunc(configuredCreditCost))
+      : 1;
+  }
 
   async create(
     dto: CreateClassDto,
@@ -139,6 +149,9 @@ export class ClassesService {
         }
       }
 
+      const creditsConsumed = this.scheduledClassCreditCost;
+      await this.ensureTeacherHasSchedulingCredits(teacherId, creditsConsumed);
+
       const durationMinutes = Math.max(
         Math.round((end.getTime() - start.getTime()) / 60000),
         1,
@@ -174,7 +187,7 @@ export class ClassesService {
             scheduledEnd: end,
             durationMinutes,
             timezone: dto.timezone,
-            creditsConsumed: dto.creditsConsumed,
+            creditsConsumed,
             zoomMeetingId: zoomMeeting.id.toString(),
             zoomHostId: zoomMeeting.host_id,
             zoomJoinUrl: zoomMeeting.join_url,
@@ -207,6 +220,20 @@ export class ClassesService {
 
         return created.id;
       });
+
+      try {
+        await this.consumeCreditsForClass(
+          classId,
+          teacherId,
+          dto.title,
+          start,
+          creditsConsumed,
+          actorId,
+        );
+      } catch (error) {
+        await this.cleanupCreatedClass(classId, zoomMeeting.id.toString());
+        throw error;
+      }
 
       this.logger.log(
         `Created class ${classId} with Zoom meeting ${zoomMeeting.id} by teacher ${teacherId}`,
@@ -309,7 +336,9 @@ export class ClassesService {
     );
 
     return {
-      data: classes.map((cls) => this.toClassEntity(cls)),
+      data: classes.map((cls) =>
+        this.toClassEntity(cls, { actorId, actorRole }),
+      ),
       meta: {
         total,
         count: classes.length,
@@ -338,7 +367,7 @@ export class ClassesService {
 
     await this.ensureAcademyAccess(cls.academyId, actorId, actorRole);
 
-    return this.toClassEntity(cls);
+    return this.toClassEntity(cls, { actorId, actorRole });
   }
 
   async update(
@@ -353,6 +382,15 @@ export class ClassesService {
     }
 
     await this.ensureAcademyAccess(existing.academyId, actorId, actorRole);
+
+    if (
+      dto.status === ClassStatus.CANCELLED &&
+      existing.status !== ClassStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        'Use the class cancellation endpoint and provide a reason.',
+      );
+    }
 
     if (dto.academyId && dto.academyId !== existing.academyId) {
       throw new BadRequestException('Academy cannot be changed for an existing class.');
@@ -455,6 +493,8 @@ export class ClassesService {
     const zoomPolicy = await this.buildZoomPolicySnapshot(
       dto.zoomSettings ?? undefined,
     );
+    const requestedCreditsConsumed =
+      actorRole === PrismaRole.TEACHER ? undefined : dto.creditsConsumed;
 
     if (existing.zoomMeetingId) {
       try {
@@ -495,7 +535,7 @@ export class ClassesService {
         scheduledEnd: end,
         durationMinutes,
         timezone: dto.timezone,
-        creditsConsumed: dto.creditsConsumed ?? existing.creditsConsumed,
+        creditsConsumed: requestedCreditsConsumed ?? existing.creditsConsumed,
         status: dto.status ?? existing.status,
         metadata: metadataInput ?? (existing.metadata as Prisma.InputJsonValue),
       },
@@ -514,10 +554,10 @@ export class ClassesService {
     }
 
     if (
-      dto.creditsConsumed &&
-      (existing.creditsConsumed ?? 0) < dto.creditsConsumed
+      requestedCreditsConsumed !== undefined &&
+      (existing.creditsConsumed ?? 0) < requestedCreditsConsumed
     ) {
-      const delta = dto.creditsConsumed - (existing.creditsConsumed ?? 0);
+      const delta = requestedCreditsConsumed - (existing.creditsConsumed ?? 0);
       await this.consumeCreditsForClass(
         updated.id,
         updated.teacherId,
@@ -530,6 +570,90 @@ export class ClassesService {
 
     this.logger.log(`Updated class ${id}`);
     return this.findOne(id, actorId, actorRole);
+  }
+
+  async cancel(
+    id: string,
+    dto: CancelClassDto,
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<ClassEntity> {
+    const existing = await this.prisma.class.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Class not found.');
+    }
+
+    await this.ensureAcademyAccess(existing.academyId, actorId, actorRole);
+
+    if (actorRole === PrismaRole.TEACHER) {
+      if (!actorId || existing.teacherId !== actorId) {
+        throw new ForbiddenException(
+          'Teachers can only cancel their own classes.',
+        );
+      }
+    }
+
+    if (existing.status === ClassStatus.ENDED) {
+      throw new BadRequestException(
+        'Ended classes can be cleared instead of cancelled.',
+      );
+    }
+
+    if (existing.status === ClassStatus.CANCELLED) {
+      throw new BadRequestException('Class is already cancelled.');
+    }
+
+    const reason = dto.reason.trim();
+    const cancelledAt = new Date();
+    const metadataPayload = this.mergeMetadata(
+      this.toPlainMetadata(existing.metadata),
+      {
+        cancellation: {
+          reason,
+          cancelledAt: cancelledAt.toISOString(),
+          cancelledBy: actorId ?? null,
+        },
+      },
+    );
+
+    await this.prisma.class.update({
+      where: { id },
+      data: {
+        status: ClassStatus.CANCELLED,
+        zoomMeetingId: null,
+        zoomHostId: null,
+        zoomJoinUrl: null,
+        zoomStartUrl: null,
+        zoomPassword: null,
+        zoomUuid: null,
+        metadata: metadataPayload
+          ? (metadataPayload as Prisma.InputJsonValue)
+          : undefined,
+      },
+    });
+
+    if (existing.zoomMeetingId) {
+      await this.safeDeleteZoomMeeting(existing.zoomMeetingId);
+    }
+
+    this.logger.log(`Cancelled class ${id} by ${actorId ?? 'unknown'}`);
+    return this.findOne(id, actorId, actorRole);
+  }
+
+  private async ensureTeacherHasSchedulingCredits(
+    teacherId: string,
+    amount: number,
+  ): Promise<void> {
+    if (amount <= 0) {
+      return;
+    }
+
+    const summary = await this.zoomCreditsService.getSummary(teacherId);
+    if (summary.balance < amount) {
+      throw new BadRequestException(
+        `Insufficient credits to schedule this class. Required: ${amount}, available: ${summary.balance}.`,
+      );
+    }
   }
 
   async remove(
@@ -550,6 +674,12 @@ export class ClassesService {
           'Teachers can only delete their own classes.',
         );
       }
+    }
+
+    if (!this.isClassClearable(existing)) {
+      throw new BadRequestException(
+        'Only ended or cancelled classes can be deleted. Cancel scheduled classes with a reason first.',
+      );
     }
 
     await this.prisma.$transaction([
@@ -748,6 +878,14 @@ export class ClassesService {
     };
   }
 
+  private isClassClearable(record: Pick<Class, 'status' | 'scheduledEnd'>): boolean {
+    return (
+      record.status === ClassStatus.ENDED ||
+      record.status === ClassStatus.CANCELLED ||
+      record.scheduledEnd.getTime() <= Date.now()
+    );
+  }
+
   private toClassEntity(
     record: Class & {
       teacher: {
@@ -759,9 +897,19 @@ export class ClassesService {
       participants?: ClassParticipant[];
       _count: { participants: number };
     },
+    viewer?: { actorId?: string; actorRole?: PrismaRole },
   ): ClassEntity {
+    const meetingUnavailable =
+      record.status === ClassStatus.CANCELLED ||
+      record.status === ClassStatus.ENDED ||
+      record.scheduledEnd.getTime() <= Date.now();
+
     return new ClassEntity({
       ...record,
+      zoomJoinUrl: meetingUnavailable ? null : record.zoomJoinUrl,
+      zoomStartUrl: !meetingUnavailable && this.canViewZoomStartUrl(record.teacherId, viewer)
+        ? record.zoomStartUrl
+        : null,
       metadata: this.toPlainMetadata(record.metadata),
       participantsCount:
         record._count?.participants ?? record.participants?.length ?? 0,
@@ -777,6 +925,24 @@ export class ClassesService {
           })
         : undefined,
     });
+  }
+
+  private canViewZoomStartUrl(
+    teacherId: string,
+    viewer?: { actorId?: string; actorRole?: PrismaRole },
+  ): boolean {
+    if (!viewer?.actorRole) {
+      return false;
+    }
+
+    if (
+      viewer.actorRole === PrismaRole.SUPER_ADMIN ||
+      viewer.actorRole === PrismaRole.ACADEMY_OWNER
+    ) {
+      return true;
+    }
+
+    return viewer.actorRole === PrismaRole.TEACHER && viewer.actorId === teacherId;
   }
 
   private toParticipantEntity(
@@ -837,6 +1003,26 @@ export class ClassesService {
         `Failed to deduct credits for class ${classId}: ${(error as Error).message}`,
       );
       throw error;
+    }
+  }
+
+  private async cleanupCreatedClass(
+    classId: string,
+    zoomMeetingId?: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.$transaction([
+        this.prisma.classParticipant.deleteMany({ where: { classId } }),
+        this.prisma.class.delete({ where: { id: classId } }),
+      ]);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to clean up class ${classId} after credit deduction failure: ${(error as Error).message}`,
+      );
+    }
+
+    if (zoomMeetingId) {
+      await this.safeDeleteZoomMeeting(zoomMeetingId);
     }
   }
 

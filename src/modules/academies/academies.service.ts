@@ -502,8 +502,25 @@ export class AcademiesService {
               firstName: true,
               lastName: true,
               email: true,
+              phoneNumber: true,
+              gender: true,
+              bio: true,
+              dateOfBirth: true,
+              addressStreet: true,
+              addressHouse: true,
+              addressCity: true,
+              addressState: true,
+              addressCountry: true,
+              profilePhotoUrl: true,
               role: true,
               status: true,
+              _count: {
+                select: {
+                  teachingClasses: true,
+                  classParticipants: true,
+                  resources: true,
+                },
+              },
             },
           },
         },
@@ -821,8 +838,19 @@ export class AcademiesService {
         firstName: string;
         lastName: string | null;
         email: string;
+        phoneNumber?: string | null;
+        gender?: string | null;
+        bio?: string | null;
+        dateOfBirth?: Date | null;
+        addressStreet?: string | null;
+        addressHouse?: string | null;
+        addressCity?: string | null;
+        addressState?: string | null;
+        addressCountry?: string | null;
+        profilePhotoUrl?: string | null;
         role: PrismaRole;
         status: PrismaUserStatus;
+        _count?: Record<string, number> | null;
       } | null;
       academy?: Academy | null;
     },
@@ -843,8 +871,19 @@ export class AcademiesService {
             firstName: record.user.firstName,
             lastName: record.user.lastName,
             email: record.user.email,
+            phoneNumber: record.user.phoneNumber,
+            gender: record.user.gender,
+            bio: record.user.bio,
+            dateOfBirth: record.user.dateOfBirth,
+            addressStreet: record.user.addressStreet,
+            addressHouse: record.user.addressHouse,
+            addressCity: record.user.addressCity,
+            addressState: record.user.addressState,
+            addressCountry: record.user.addressCountry,
+            profilePhotoUrl: record.user.profilePhotoUrl,
             role: record.user.role,
             status: record.user.status,
+            _count: record.user._count ?? null,
           }
         : undefined,
       academy: record.academy

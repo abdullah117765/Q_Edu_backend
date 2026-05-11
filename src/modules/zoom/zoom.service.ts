@@ -99,9 +99,9 @@ export class ZoomService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Failed to create Zoom meeting for host ${hostId}. Falling back to placeholder. Reason: ${message}`,
+        `Failed to create Zoom meeting for host ${hostId}. Reason: ${message}`,
       );
-      return this.buildPlaceholderMeeting(hostId, payload);
+      throw error;
     }
   }
 
@@ -263,8 +263,8 @@ export class ZoomService {
       timezone: payload.timezone,
       agenda: payload.agenda,
       created_at: now.toISOString(),
-      start_url: `https://meetings.local/start/${id}`,
-      join_url: `https://meetings.local/join/${id}`,
+      start_url: `https://zoom.us/s/${id}`,
+      join_url: `https://zoom.us/wc/${id}/join?prefer=1`,
       password: undefined,
     };
   }

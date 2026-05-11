@@ -39,17 +39,17 @@ export class BillingController {
     private readonly coupons: CouponsService,
   ) {}
 
-  // ---------- Public catalog (any authenticated user) ----------
+  // ---------- Owner billing catalog ----------
 
   @Get('packages')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'List active credit packages' })
   listPackages() {
     return this.billing.listPackages({ activeOnly: true });
   }
 
   @Get('plans')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'List active subscription plans (academies)' })
   listPlans() {
     return this.billing.listPlans({ activeOnly: true });
@@ -58,7 +58,7 @@ export class BillingController {
   // ---------- Self-service ----------
 
   @Get('me')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({
     summary:
       'My current billing overview (balance, subscription, recent payments)',
@@ -283,7 +283,7 @@ export class BillingController {
   }
 
   @Get('coupons/marketing')
-  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER, Role.STUDENT)
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Active highlighted coupons for marketing banners' })
   listMarketingCoupons() {
     return this.coupons.getActiveMarketing();
