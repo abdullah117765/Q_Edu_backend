@@ -1,46 +1,46 @@
 import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  AcademyMemberRole,
-  AcademyMembershipStatus,
-  Class,
-  ClassParticipant,
-  Prisma,
-  Role as PrismaRole,
-  UserStatus as PrismaUserStatus,
+    AcademyMemberRole,
+    AcademyMembershipStatus,
+    Class,
+    ClassParticipant,
+    Prisma,
+    Role as PrismaRole,
+    UserStatus as PrismaUserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import {
-  CreateZoomCreditTransactionDto,
-  ZoomCreditOperation,
+    CreateZoomCreditTransactionDto,
+    ZoomCreditOperation,
 } from '../zoom-credits/dto/create-zoom-credit-transaction.dto';
 import { ZoomCreditsService } from '../zoom-credits/zoom-credits.service';
 import {
-  ZoomMeetingSettings,
-  ZoomParticipant,
+    ZoomMeetingSettings,
+    ZoomParticipant,
 } from '../zoom/interfaces/zoom.interface';
 import { ZoomService } from '../zoom/zoom.service';
 import { CancelClassDto } from './dto/cancel-class.dto';
-import { CreateClassDto } from './dto/create-class.dto';
 import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
+import { CreateClassDto } from './dto/create-class.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
 import { PaginatedClassParticipantsResponseDto } from './dto/paginated-class-participants-response.dto';
 import { PaginatedClassesResponseDto } from './dto/paginated-classes-response.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
-import { ClassParticipantEntity } from './entities/class-participant.entity';
-import {
-  ClassEntity,
-  ClassTeacherSummaryEntity,
-} from './entities/class.entity';
 import { ClassParticipantRole } from './entities/class-participant-role.enum';
+import { ClassParticipantEntity } from './entities/class-participant.entity';
 import { ClassStatus } from './entities/class-status.enum';
-import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import {
+    ClassEntity,
+    ClassTeacherSummaryEntity,
+} from './entities/class.entity';
 
 @Injectable()
 export class ClassesService {
@@ -112,7 +112,9 @@ export class ClassesService {
       }
 
       if (teacher.status !== PrismaUserStatus.APPROVED) {
-        throw new BadRequestException('Teacher must be approved before scheduling classes.');
+        throw new BadRequestException(
+          'Teacher must be approved before scheduling classes.',
+        );
       }
 
       const academy = await this.prisma.academy.findUnique({
@@ -127,9 +129,14 @@ export class ClassesService {
 
       if (
         teacher.role !== PrismaRole.TEACHER &&
-        !(teacherId === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
+        !(
+          teacherId === academy.ownerId &&
+          teacher.role === PrismaRole.ACADEMY_OWNER
+        )
       ) {
-        throw new BadRequestException('Selected user must be a teacher or the academy owner.');
+        throw new BadRequestException(
+          'Selected user must be a teacher or the academy owner.',
+        );
       }
 
       if (teacherId !== academy.ownerId) {
@@ -145,7 +152,9 @@ export class ClassesService {
           membership.status !== AcademyMembershipStatus.APPROVED ||
           membership.role !== AcademyMemberRole.TEACHER
         ) {
-          throw new BadRequestException('Teacher must be an approved member of the selected academy.');
+          throw new BadRequestException(
+            'Teacher must be an approved member of the selected academy.',
+          );
         }
       }
 
@@ -258,11 +267,16 @@ export class ClassesService {
     actorId?: string,
     actorRole?: PrismaRole,
   ): Promise<PaginatedClassesResponseDto> {
-    const accessible = await this.resolveAccessibleAcademyIds(actorId, actorRole);
+    const accessible = await this.resolveAccessibleAcademyIds(
+      actorId,
+      actorRole,
+    );
 
     if (query.academyId && !accessible.unlimited) {
       if (!accessible.academyIds.includes(query.academyId)) {
-        throw new ForbiddenException('You do not have access to the requested academy.');
+        throw new ForbiddenException(
+          'You do not have access to the requested academy.',
+        );
       }
     }
 
@@ -279,8 +293,8 @@ export class ClassesService {
       ...(query.academyId
         ? { academyId: query.academyId }
         : accessible.unlimited
-        ? {}
-        : { academyId: { in: accessible.academyIds } }),
+          ? {}
+          : { academyId: { in: accessible.academyIds } }),
     };
 
     const search = query.search?.trim();
@@ -354,7 +368,11 @@ export class ClassesService {
     };
   }
 
-  async findOne(id: string, actorId?: string, actorRole?: PrismaRole): Promise<ClassEntity> {
+  async findOne(
+    id: string,
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<ClassEntity> {
     const cls = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -396,7 +414,9 @@ export class ClassesService {
     }
 
     if (dto.academyId && dto.academyId !== existing.academyId) {
-      throw new BadRequestException('Academy cannot be changed for an existing class.');
+      throw new BadRequestException(
+        'Academy cannot be changed for an existing class.',
+      );
     }
 
     const academy = await this.prisma.academy.findUnique({
@@ -441,18 +461,28 @@ export class ClassesService {
         throw new NotFoundException('Teacher not found.');
       }
       if (teacher.status !== PrismaUserStatus.APPROVED) {
-        throw new BadRequestException('Teacher must be approved before leading classes.');
+        throw new BadRequestException(
+          'Teacher must be approved before leading classes.',
+        );
       }
       if (
         teacher.role !== PrismaRole.TEACHER &&
-        !(teacher.id === academy.ownerId && teacher.role === PrismaRole.ACADEMY_OWNER)
+        !(
+          teacher.id === academy.ownerId &&
+          teacher.role === PrismaRole.ACADEMY_OWNER
+        )
       ) {
-        throw new BadRequestException('Selected user must be a teacher or the academy owner.');
+        throw new BadRequestException(
+          'Selected user must be a teacher or the academy owner.',
+        );
       }
       if (teacher.id !== academy.ownerId) {
         const membership = await this.prisma.academyMembership.findUnique({
           where: {
-            academyId_userId: { academyId: existing.academyId, userId: teacher.id },
+            academyId_userId: {
+              academyId: existing.academyId,
+              userId: teacher.id,
+            },
           },
           select: { status: true, role: true },
         });
@@ -461,7 +491,9 @@ export class ClassesService {
           membership.status !== AcademyMembershipStatus.APPROVED ||
           membership.role !== AcademyMemberRole.TEACHER
         ) {
-          throw new BadRequestException('Teacher must be an approved member of this academy.');
+          throw new BadRequestException(
+            'Teacher must be an approved member of this academy.',
+          );
         }
       }
     }
@@ -881,7 +913,9 @@ export class ClassesService {
     };
   }
 
-  private isClassClearable(record: Pick<Class, 'status' | 'scheduledEnd'>): boolean {
+  private isClassClearable(
+    record: Pick<Class, 'status' | 'scheduledEnd'>,
+  ): boolean {
     return (
       record.status === ClassStatus.ENDED ||
       record.status === ClassStatus.CANCELLED ||
@@ -910,9 +944,11 @@ export class ClassesService {
     return new ClassEntity({
       ...record,
       zoomJoinUrl: meetingUnavailable ? null : record.zoomJoinUrl,
-      zoomStartUrl: !meetingUnavailable && this.canViewZoomStartUrl(record.teacherId, viewer)
-        ? record.zoomStartUrl
-        : null,
+      zoomStartUrl:
+        !meetingUnavailable &&
+        this.canViewZoomStartUrl(record.teacherId, viewer)
+          ? record.zoomStartUrl
+          : null,
       metadata: this.toPlainMetadata(record.metadata),
       participantsCount:
         record._count?.participants ?? record.participants?.length ?? 0,
@@ -945,7 +981,9 @@ export class ClassesService {
       return true;
     }
 
-    return viewer.actorRole === PrismaRole.TEACHER && viewer.actorId === teacherId;
+    return (
+      viewer.actorRole === PrismaRole.TEACHER && viewer.actorId === teacherId
+    );
   }
 
   private toParticipantEntity(

@@ -19,7 +19,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
-import { ResourcesModule } from './modules/resources/resources.module';
+import { RecordingsModule } from './modules/recordings/recordings.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { UsersModule } from './modules/users/users.module';
 import { ZoomCreditsModule } from './modules/zoom-credits/zoom-credits.module';
@@ -53,6 +53,7 @@ import { StorageModule } from './storage/storage.module';
     ZoomCreditsModule,
     DashboardModule,
     ResourcesModule,
+    RecordingsModule,
     PaymentsModule,
     PlatformSettingsModule,
     AcademySettingsModule,

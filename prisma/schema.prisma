@@ -279,6 +279,7 @@ model Class {
   participants           ClassParticipant[]
   zoomCreditTransactions ZoomCreditTransaction[]
   resources              Resource[]
+  recordings             ClassRecording[]
   academy                Academy                 @relation(fields: [academyId], references: [id], onDelete: Cascade)
 
   @@index([teacherId])
@@ -309,6 +310,40 @@ model ClassParticipant {
   @@index([classId])
   @@index([userId])
   @@index([zoomParticipantUuid])
+}
+
+enum RecordingSource {
+  ZOOM_CLOUD
+  ZOOM_LOCAL
+}
+
+model ClassRecording {
+  id              String          @id @default(cuid())
+  classId         String
+  academyId       String
+  teacherId       String
+  source          RecordingSource @default(ZOOM_CLOUD)
+  zoomMeetingId   String?
+  zoomRecordingId String?         @unique
+  topic           String?
+  startTime       DateTime?
+  endTime         DateTime?
+  durationSeconds Int?
+  fileSize        BigInt?
+  playUrl         String?         @db.VarChar(1024)
+  downloadUrl     String?         @db.VarChar(1024)
+  password        String?
+  status          String          @default("completed")
+  rawPayload      Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  class           Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@index([academyId])
+  @@index([teacherId])
+  @@index([startTime])
+  @@index([source])
 }
 
 model ZoomCreditBalance {

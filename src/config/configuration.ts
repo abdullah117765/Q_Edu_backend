@@ -86,6 +86,8 @@ export default () => ({
       clientSecret,
       apiBaseUrl: process.env.ZOOM_API_BASE_URL ?? 'https://api.zoom.us/v2',
       oauthUrl: process.env.ZOOM_OAUTH_URL ?? 'https://zoom.us/oauth/token',
+      webhookVerificationToken:
+        process.env.ZOOM_WEBHOOK_VERIFICATION_TOKEN?.trim() ?? '',
     };
   })(),
   cors: {

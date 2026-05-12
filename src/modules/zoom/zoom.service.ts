@@ -1,11 +1,16 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, isAxiosError } from 'axios';
+import axios, {
+    AxiosError,
+    AxiosInstance,
+    AxiosRequestConfig,
+    isAxiosError,
+} from 'axios';
 import {
-  CreateZoomMeetingPayload,
-  UpdateZoomMeetingPayload,
-  ZoomMeetingResponse,
-  ZoomParticipantsResponse,
+    CreateZoomMeetingPayload,
+    UpdateZoomMeetingPayload,
+    ZoomMeetingResponse,
+    ZoomParticipantsResponse,
 } from './interfaces/zoom.interface';
 
 interface ZoomTokenResponse {
@@ -32,11 +37,17 @@ export class ZoomService {
   private tokenCache: CachedToken | null = null;
 
   constructor(private readonly configService: ConfigService) {
-    const baseUrl = configService.get<string>('zoom.apiBaseUrl') ?? 'https://api.zoom.us/v2';
+    const baseUrl =
+      configService.get<string>('zoom.apiBaseUrl') ?? 'https://api.zoom.us/v2';
     this.accountId = (configService.get<string>('zoom.accountId') ?? '').trim();
     this.clientId = (configService.get<string>('zoom.clientId') ?? '').trim();
-    this.clientSecret = (configService.get<string>('zoom.clientSecret') ?? '').trim();
-    const rawOauthUrl = (configService.get<string>('zoom.oauthUrl') ?? 'https://zoom.us/oauth/token').trim();
+    this.clientSecret = (
+      configService.get<string>('zoom.clientSecret') ?? ''
+    ).trim();
+    const rawOauthUrl = (
+      configService.get<string>('zoom.oauthUrl') ??
+      'https://zoom.us/oauth/token'
+    ).trim();
     this.oauthUrl = this.normaliseOauthUrl(rawOauthUrl);
     const explicitEnabled = configService.get<string>('zoom.enabled');
     let enabled: boolean;
@@ -48,12 +59,18 @@ export class ZoomService {
     }
 
     if (!enabled) {
-      this.logger.warn('Zoom integration is disabled. Meetings will use local placeholders.');
+      this.logger.warn(
+        'Zoom integration is disabled. Meetings will use local placeholders.',
+      );
     } else if (!this.accountId || !this.clientId || !this.clientSecret) {
-      this.logger.error('Zoom integration is enabled but required credentials are missing.');
+      this.logger.error(
+        'Zoom integration is enabled but required credentials are missing.',
+      );
       enabled = false;
     } else if (this.oauthUrl !== rawOauthUrl) {
-      this.logger.warn(`Normalised Zoom OAuth URL to ${this.oauthUrl}. Original value "${rawOauthUrl}" did not match Zoom token endpoint.`);
+      this.logger.warn(
+        `Normalised Zoom OAuth URL to ${this.oauthUrl}. Original value "${rawOauthUrl}" did not match Zoom token endpoint.`,
+      );
     }
     this.enabled = enabled;
 
@@ -76,16 +93,23 @@ export class ZoomService {
         return parsed.toString();
       }
     } catch (error) {
-      this.logger.warn(`Invalid Zoom OAuth URL "${url}". Falling back to default token endpoint.`);
+      this.logger.warn(
+        `Invalid Zoom OAuth URL "${url}". Falling back to default token endpoint.`,
+      );
       return 'https://zoom.us/oauth/token';
     }
 
     return url;
   }
 
-  async createMeeting(hostId: string, payload: CreateZoomMeetingPayload): Promise<ZoomMeetingResponse> {
+  async createMeeting(
+    hostId: string,
+    payload: CreateZoomMeetingPayload,
+  ): Promise<ZoomMeetingResponse> {
     if (!this.enabled) {
-      this.logger.debug(`Zoom disabled. Returning placeholder meeting for host ${hostId}.`);
+      this.logger.debug(
+        `Zoom disabled. Returning placeholder meeting for host ${hostId}.`,
+      );
       return this.buildPlaceholderMeeting(hostId, payload);
     }
 
@@ -105,9 +129,14 @@ export class ZoomService {
     }
   }
 
-  async updateMeeting(meetingId: string, payload: UpdateZoomMeetingPayload): Promise<void> {
+  async updateMeeting(
+    meetingId: string,
+    payload: UpdateZoomMeetingPayload,
+  ): Promise<void> {
     if (!this.enabled) {
-      this.logger.debug(`Zoom disabled. Skipping meeting update for ${meetingId}.`);
+      this.logger.debug(
+        `Zoom disabled. Skipping meeting update for ${meetingId}.`,
+      );
       return;
     }
 
@@ -120,7 +149,9 @@ export class ZoomService {
 
   async deleteMeeting(meetingId: string): Promise<void> {
     if (!this.enabled) {
-      this.logger.debug(`Zoom disabled. Skipping meeting deletion for ${meetingId}.`);
+      this.logger.debug(
+        `Zoom disabled. Skipping meeting deletion for ${meetingId}.`,
+      );
       return;
     }
 
@@ -132,7 +163,9 @@ export class ZoomService {
 
   async getMeeting(meetingId: string): Promise<ZoomMeetingResponse> {
     if (!this.enabled) {
-      this.logger.debug(`Zoom disabled. Returning placeholder meeting for id ${meetingId}.`);
+      this.logger.debug(
+        `Zoom disabled. Returning placeholder meeting for id ${meetingId}.`,
+      );
       return this.buildPlaceholderMeeting('placeholder', {
         topic: 'Placeholder meeting',
         start_time: new Date().toISOString(),
@@ -150,7 +183,9 @@ export class ZoomService {
     options?: { pageSize?: number; nextPageToken?: string },
   ): Promise<ZoomParticipantsResponse> {
     if (!this.enabled) {
-      this.logger.debug(`Zoom disabled. Returning empty participants for meeting ${meetingId}.`);
+      this.logger.debug(
+        `Zoom disabled. Returning empty participants for meeting ${meetingId}.`,
+      );
       return { participants: [], total_records: 0 };
     }
 
@@ -164,7 +199,10 @@ export class ZoomService {
     });
   }
 
-  private async executeRequest<T>(config: AxiosRequestConfig, retry = true): Promise<T> {
+  private async executeRequest<T>(
+    config: AxiosRequestConfig,
+    retry = true,
+  ): Promise<T> {
     if (!this.enabled) {
       throw new BadGatewayException('Zoom integration is disabled.');
     }
@@ -183,7 +221,9 @@ export class ZoomService {
     } catch (error) {
       if (isAxiosError(error)) {
         if (error.response?.status === 401 && retry) {
-          this.logger.warn('Zoom access token expired. Refreshing and retrying request.');
+          this.logger.warn(
+            'Zoom access token expired. Refreshing and retrying request.',
+          );
           this.tokenCache = null;
           return this.executeRequest<T>(config, false);
         }
@@ -194,9 +234,13 @@ export class ZoomService {
           throw new BadGatewayException(`Zoom API error — ${zoomDetail}`);
         }
       } else {
-        this.logger.error(`Zoom API unexpected error: ${(error as Error).message}`);
+        this.logger.error(
+          `Zoom API unexpected error: ${(error as Error).message}`,
+        );
       }
-      throw new BadGatewayException('Zoom API request failed. Please try again later.');
+      throw new BadGatewayException(
+        'Zoom API request failed. Please try again later.',
+      );
     }
   }
 
@@ -209,7 +253,9 @@ export class ZoomService {
       return this.tokenCache.accessToken;
     }
 
-    const credentials = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+    const credentials = Buffer.from(
+      `${this.clientId}:${this.clientSecret}`,
+    ).toString('base64');
     const url = `${this.oauthUrl}?grant_type=account_credentials&account_id=${encodeURIComponent(this.accountId)}`;
 
     try {
@@ -217,7 +263,9 @@ export class ZoomService {
         this.accountId.length > 6
           ? `${this.accountId.slice(0, 3)}***${this.accountId.slice(-3)}`
           : this.accountId;
-      this.logger.debug(`Requesting Zoom access token from ${this.oauthUrl} for account ${redactedAccountId}`);
+      this.logger.debug(
+        `Requesting Zoom access token from ${this.oauthUrl} for account ${redactedAccountId}`,
+      );
       const response = await axios.post<ZoomTokenResponse>(url, null, {
         headers: {
           Authorization: `Basic ${credentials}`,
@@ -225,15 +273,20 @@ export class ZoomService {
         timeout: 10000,
       });
 
-      const { access_token: accessToken, expires_in: expiresIn } = response.data;
+      const { access_token: accessToken, expires_in: expiresIn } =
+        response.data;
       const expiresAt = Date.now() + (expiresIn - 60) * 1000; // refresh 1 minute before expiry
       this.tokenCache = { accessToken, expiresAt };
       return accessToken;
     } catch (error) {
       if (isAxiosError(error)) {
-        this.logger.error(`Failed to refresh Zoom access token: ${this.describeAxiosError(error)}`);
+        this.logger.error(
+          `Failed to refresh Zoom access token: ${this.describeAxiosError(error)}`,
+        );
       } else {
-        this.logger.error(`Failed to refresh Zoom access token: ${(error as Error).message}`);
+        this.logger.error(
+          `Failed to refresh Zoom access token: ${(error as Error).message}`,
+        );
       }
       throw new BadGatewayException('Unable to authenticate with Zoom API.');
     }
@@ -241,9 +294,10 @@ export class ZoomService {
 
   private describeAxiosError(error: AxiosError): string {
     const status = error.response?.status ?? 'unknown';
-    const message = error.response?.data && typeof error.response.data === 'object'
-      ? JSON.stringify(error.response.data)
-      : error.message;
+    const message =
+      error.response?.data && typeof error.response.data === 'object'
+        ? JSON.stringify(error.response.data)
+        : error.message;
     return `status=${status} message=${message}`;
   }
 
