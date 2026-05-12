@@ -78,7 +78,9 @@ export class ZoomCreditsController {
   @Get('me/summary')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Fetch credit summary for the authenticated user' })
-  async getMySummary(@Req() request: Request): Promise<ZoomCreditSummaryEntity> {
+  async getMySummary(
+    @Req() request: Request,
+  ): Promise<ZoomCreditSummaryEntity> {
     const userId = (request as RequestWithUser).user?.id as string;
     return this.zoomCreditsService.getSummary(userId);
   }

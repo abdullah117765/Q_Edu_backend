@@ -6,13 +6,15 @@
  */
 import { PrismaClient } from '@prisma/client';
 import * as dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
-const INITIAL_CREDITS = Number(process.env.ACADEMY_OWNER_INITIAL_FREE_CREDITS ?? 100);
+const INITIAL_CREDITS = Number(
+  process.env.ACADEMY_OWNER_INITIAL_FREE_CREDITS ?? 100,
+);
 const prisma = new PrismaClient();
 
 async function main() {
@@ -75,12 +77,17 @@ async function main() {
       });
     });
 
-    console.log(`  GRANT ${owner.email} — credited ${INITIAL_CREDITS} free credits`);
+    console.log(
+      `  GRANT ${owner.email} — credited ${INITIAL_CREDITS} free credits`,
+    );
   }
 
   console.log('Done.');
 }
 
 main()
-  .catch((err) => { console.error(err); process.exit(1); })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());

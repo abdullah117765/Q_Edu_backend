@@ -273,7 +273,8 @@ export class BillingController {
       limit: limit ? Number(limit) : 25,
       search: search || undefined,
       appliesTo: appliesTo || undefined,
-      activeOnly: active === 'true' ? true : active === 'false' ? false : undefined,
+      activeOnly:
+        active === 'true' ? true : active === 'false' ? false : undefined,
     });
   }
 
