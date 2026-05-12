@@ -1,38 +1,38 @@
 import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    Patch,
+    Post,
+    Query,
+    Req,
 } from '@nestjs/common';
 import {
-  ApiBadRequestResponse,
-  ApiBearerAuth,
-  ApiCreatedResponse,
-  ApiNotFoundResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiParam,
-  ApiTags,
+    ApiBadRequestResponse,
+    ApiBearerAuth,
+    ApiCreatedResponse,
+    ApiNotFoundResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiParam,
+    ApiTags,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { MessageResponseDto } from '../auth/dto/message-response.dto';
 import { Role } from '../users/entities/role.enum';
+import { ClassesService } from './classes.service';
 import { CancelClassDto } from './dto/cancel-class.dto';
-import { CreateClassDto } from './dto/create-class.dto';
 import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
+import { CreateClassDto } from './dto/create-class.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
 import { PaginatedClassParticipantsResponseDto } from './dto/paginated-class-participants-response.dto';
 import { PaginatedClassesResponseDto } from './dto/paginated-classes-response.dto';
 import { RecreateClassDto } from './dto/recreate-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { ClassEntity } from './entities/class.entity';
-import { ClassesService } from './classes.service';
 type RequestWithUser = Request & { user?: { id?: string; role?: Role } };
 
 @ApiTags('classes')
@@ -73,7 +73,10 @@ export class ClassesController {
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: ClassEntity })
   @ApiNotFoundResponse({ description: 'Class not found' })
-  findOne(@Param('id') id: string, @Req() request: Request): Promise<ClassEntity> {
+  findOne(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<ClassEntity> {
     const { id: actorId, role: actorRole } =
       (request as RequestWithUser).user ?? {};
     return this.classesService.findOne(id, actorId, actorRole);
@@ -96,7 +99,9 @@ export class ClassesController {
 
   @Delete(':id')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
-  @ApiOperation({ summary: 'Delete an ended or cancelled class and associated Zoom meeting' })
+  @ApiOperation({
+    summary: 'Delete an ended or cancelled class and associated Zoom meeting',
+  })
   @ApiParam({ name: 'id', description: 'Class identifier' })
   @ApiOkResponse({ type: MessageResponseDto })
   async remove(
@@ -159,7 +164,11 @@ export class ClassesController {
   ): Promise<MessageResponseDto> {
     const { id: actorId, role: actorRole } =
       (request as RequestWithUser).user ?? {};
-    const count = await this.classesService.syncParticipantsFromZoom(id, actorId, actorRole);
+    const count = await this.classesService.syncParticipantsFromZoom(
+      id,
+      actorId,
+      actorRole,
+    );
     return { message: `Synced ${count} participants from Zoom.` };
   }
 
@@ -186,7 +195,9 @@ export class ClassesController {
   })
   @ApiParam({ name: 'id', description: 'Original class identifier' })
   @ApiCreatedResponse({ type: ClassEntity })
-  @ApiBadRequestResponse({ description: 'Invalid schedule or insufficient credits' })
+  @ApiBadRequestResponse({
+    description: 'Invalid schedule or insufficient credits',
+  })
   async recreateClass(
     @Param('id') id: string,
     @Body() dto: RecreateClassDto,

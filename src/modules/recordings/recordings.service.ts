@@ -119,6 +119,9 @@ export class RecordingsService {
         academyId: cls.academyId,
         teacherId: cls.teacherId,
         source: dto.source as RecordingSource,
+        // Ensure local recordings have a startTime so they sort correctly
+        // (NULL startTime sorts to the END with ORDER BY startTime DESC)
+        startTime: new Date(),
         playUrl: dto.playUrl ?? null,
         downloadUrl: dto.downloadUrl ?? null,
         password: dto.password ?? null,

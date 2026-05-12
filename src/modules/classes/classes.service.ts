@@ -743,7 +743,9 @@ export class ClassesService {
 
     if (actorRole === PrismaRole.TEACHER) {
       if (!actorId || existing.teacherId !== actorId) {
-        throw new ForbiddenException('Teachers can only end their own classes.');
+        throw new ForbiddenException(
+          'Teachers can only end their own classes.',
+        );
       }
     }
 
@@ -1012,9 +1014,7 @@ export class ClassesService {
     };
   }
 
-  private isClassClearable(
-    record: Pick<Class, 'status'>,
-  ): boolean {
+  private isClassClearable(record: Pick<Class, 'status'>): boolean {
     return (
       record.status === ClassStatus.ENDED ||
       record.status === ClassStatus.CANCELLED
