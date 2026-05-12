@@ -544,6 +544,40 @@ export class ZoomCreditsService {
     );
   }
 
+  async assignCreditsToTeacher(
+    teacherId: string,
+    academyId: string,
+    amount: number,
+    ownerId: string,
+    reason?: string,
+  ): Promise<void> {
+    const safeAmount = Math.trunc(amount);
+    if (!Number.isFinite(safeAmount) || safeAmount <= 0) {
+      throw new BadRequestException(
+        'Assignment amount must be a positive whole number.',
+      );
+    }
+
+    await this.assertAcademyOwner(academyId, ownerId);
+    await this.assertTeacherBelongsToAcademy(teacherId, academyId);
+
+    await this.transferCredits(
+      {
+        fromUserId: ownerId,
+        toUserId: teacherId,
+        amount: safeAmount,
+        reason:
+          reason?.trim() || `Assigned ${safeAmount} credits by academy owner`,
+        metadata: {
+          source: 'academy_owner.assignment',
+          academyId,
+          teacherId,
+        },
+      },
+      ownerId,
+    );
+  }
+
   async getTeacherCreditAuditLog(
     teacherId: string,
     academyId: string,
