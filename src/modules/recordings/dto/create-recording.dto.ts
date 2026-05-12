@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsIn, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class CreateRecordingDto {
@@ -12,11 +13,13 @@ export class CreateRecordingDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => value || undefined)
   @IsUrl()
   playUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => value || undefined)
   @IsUrl()
   downloadUrl?: string;
 

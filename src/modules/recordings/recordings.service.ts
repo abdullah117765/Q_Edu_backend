@@ -2,7 +2,7 @@ import {
     ForbiddenException,
     Injectable,
     Logger,
-    NotFoundException
+    NotFoundException,
 } from '@nestjs/common';
 import { RecordingSource } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
