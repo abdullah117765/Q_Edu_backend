@@ -156,7 +156,10 @@ export class ClassesService {
         Math.round((end.getTime() - start.getTime()) / 60000),
         1,
       );
-      const hostIdentifier = teacher.zoomUserId ?? teacher.email;
+      // Fall back to 'me' (the Zoom app account) when no per-teacher Zoom
+      // user ID is configured. Using the teacher's platform email would fail
+      // unless that exact email also exists as a user inside the Zoom account.
+      const hostIdentifier = teacher.zoomUserId ?? 'me';
 
       const zoomPolicy = await this.buildZoomPolicySnapshot(
         dto.zoomSettings ?? undefined,

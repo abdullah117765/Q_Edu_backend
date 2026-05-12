@@ -187,7 +187,12 @@ export class ZoomService {
           this.tokenCache = null;
           return this.executeRequest<T>(config, false);
         }
-        this.logger.error(`Zoom API error: ${this.describeAxiosError(error)}`);
+        const zoomDetail = this.describeAxiosError(error);
+        this.logger.error(`Zoom API error: ${zoomDetail}`);
+        // Surface the real Zoom error in non-production environments to ease debugging.
+        if (process.env.NODE_ENV !== 'production') {
+          throw new BadGatewayException(`Zoom API error — ${zoomDetail}`);
+        }
       } else {
         this.logger.error(`Zoom API unexpected error: ${(error as Error).message}`);
       }
