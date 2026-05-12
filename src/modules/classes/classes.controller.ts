@@ -29,6 +29,7 @@ import { ClassParticipantsQueryDto } from './dto/class-participants-query.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
 import { PaginatedClassParticipantsResponseDto } from './dto/paginated-class-participants-response.dto';
 import { PaginatedClassesResponseDto } from './dto/paginated-classes-response.dto';
+import { RecreateClassDto } from './dto/recreate-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { ClassEntity } from './entities/class.entity';
 import { ClassesService } from './classes.service';
@@ -160,5 +161,39 @@ export class ClassesController {
       (request as RequestWithUser).user ?? {};
     const count = await this.classesService.syncParticipantsFromZoom(id, actorId, actorRole);
     return { message: `Synced ${count} participants from Zoom.` };
+  }
+
+  @Post(':id/end')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @ApiOperation({ summary: 'Explicitly end a class (teacher action)' })
+  @ApiParam({ name: 'id', description: 'Class identifier' })
+  @ApiOkResponse({ type: ClassEntity })
+  @ApiBadRequestResponse({ description: 'Class is already ended or cancelled' })
+  async endClass(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<ClassEntity> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.endClass(id, actorId, actorRole);
+  }
+
+  @Post(':id/recreate')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @ApiOperation({
+    summary:
+      'Recreate a class with the same participants at the same or a new time',
+  })
+  @ApiParam({ name: 'id', description: 'Original class identifier' })
+  @ApiCreatedResponse({ type: ClassEntity })
+  @ApiBadRequestResponse({ description: 'Invalid schedule or insufficient credits' })
+  async recreateClass(
+    @Param('id') id: string,
+    @Body() dto: RecreateClassDto,
+    @Req() request: Request,
+  ): Promise<ClassEntity> {
+    const { id: actorId, role: actorRole } =
+      (request as RequestWithUser).user ?? {};
+    return this.classesService.recreateClass(id, dto, actorId, actorRole);
   }
 }

@@ -729,6 +729,105 @@ export class ClassesService {
     this.logger.log(`Deleted class ${id}`);
   }
 
+  async endClass(
+    id: string,
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<ClassEntity> {
+    const existing = await this.prisma.class.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Class not found.');
+    }
+
+    await this.ensureAcademyAccess(existing.academyId, actorId, actorRole);
+
+    if (actorRole === PrismaRole.TEACHER) {
+      if (!actorId || existing.teacherId !== actorId) {
+        throw new ForbiddenException('Teachers can only end their own classes.');
+      }
+    }
+
+    if (existing.status === ClassStatus.ENDED) {
+      throw new BadRequestException('Class is already ended.');
+    }
+    if (existing.status === ClassStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled classes cannot be ended.');
+    }
+
+    await this.prisma.class.update({
+      where: { id },
+      data: {
+        status: ClassStatus.ENDED,
+        zoomMeetingId: null,
+        zoomHostId: null,
+        zoomJoinUrl: null,
+        zoomStartUrl: null,
+        zoomPassword: null,
+        zoomUuid: null,
+      },
+    });
+
+    if (existing.zoomMeetingId) {
+      await this.safeDeleteZoomMeeting(existing.zoomMeetingId);
+    }
+
+    this.logger.log(`Ended class ${id} by ${actorId ?? 'unknown'}`);
+    return this.findOne(id, actorId, actorRole);
+  }
+
+  async recreateClass(
+    id: string,
+    dto: { scheduledStart?: string; scheduledEnd?: string },
+    actorId?: string,
+    actorRole?: PrismaRole,
+  ): Promise<ClassEntity> {
+    const original = await this.prisma.class.findUnique({
+      where: { id },
+      include: { participants: true },
+    });
+    if (!original) {
+      throw new NotFoundException('Class not found.');
+    }
+
+    await this.ensureAcademyAccess(original.academyId, actorId, actorRole);
+
+    if (actorRole === PrismaRole.TEACHER) {
+      if (!actorId || original.teacherId !== actorId) {
+        throw new ForbiddenException(
+          'Teachers can only recreate their own classes.',
+        );
+      }
+    }
+
+    const start = dto.scheduledStart
+      ? new Date(dto.scheduledStart)
+      : new Date(original.scheduledStart);
+    const end = dto.scheduledEnd
+      ? new Date(dto.scheduledEnd)
+      : new Date(original.scheduledEnd);
+
+    const createDto: CreateClassDto = {
+      title: original.title,
+      description: original.description ?? undefined,
+      academyId: original.academyId,
+      teacherId: original.teacherId,
+      scheduledStart: start.toISOString(),
+      scheduledEnd: end.toISOString(),
+      timezone: original.timezone,
+      participants: original.participants.map((p) => ({
+        userId: p.userId ?? undefined,
+        email: p.email ?? undefined,
+        displayName: p.displayName ?? undefined,
+        role: p.role as ClassParticipantRole,
+      })),
+    };
+
+    this.logger.log(
+      `Recreating class ${id} as new class by ${actorId ?? 'unknown'}`,
+    );
+    return this.create(createDto, actorId, actorRole);
+  }
+
   async getParticipants(
     classId: string,
     query: ClassParticipantsQueryDto,
@@ -914,12 +1013,11 @@ export class ClassesService {
   }
 
   private isClassClearable(
-    record: Pick<Class, 'status' | 'scheduledEnd'>,
+    record: Pick<Class, 'status'>,
   ): boolean {
     return (
       record.status === ClassStatus.ENDED ||
-      record.status === ClassStatus.CANCELLED ||
-      record.scheduledEnd.getTime() <= Date.now()
+      record.status === ClassStatus.CANCELLED
     );
   }
 
@@ -938,8 +1036,7 @@ export class ClassesService {
   ): ClassEntity {
     const meetingUnavailable =
       record.status === ClassStatus.CANCELLED ||
-      record.status === ClassStatus.ENDED ||
-      record.scheduledEnd.getTime() <= Date.now();
+      record.status === ClassStatus.ENDED;
 
     return new ClassEntity({
       ...record,
