@@ -75,6 +75,14 @@ export class ZoomCreditsController {
     return this.zoomCreditsService.purchaseCredits(userId as string, dto);
   }
 
+  @Get('me/summary')
+  @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
+  @ApiOperation({ summary: 'Fetch credit summary for the authenticated user' })
+  async getMySummary(@Req() request: Request): Promise<ZoomCreditSummaryEntity> {
+    const userId = (request as RequestWithUser).user?.id as string;
+    return this.zoomCreditsService.getSummary(userId);
+  }
+
   @Get(':userId/summary')
   @Auth(Role.SUPER_ADMIN, Role.ACADEMY_OWNER, Role.TEACHER)
   @ApiOperation({ summary: 'Fetch credit summary for a user' })
@@ -146,6 +154,28 @@ export class ZoomCreditsController {
       dto.reason,
     );
     return { success: true, message: 'Credit limit updated successfully' };
+  }
+
+  @Post('teacher/:teacherId/assign')
+  @Auth(Role.ACADEMY_OWNER)
+  @ApiOperation({
+    summary: 'Assign credits from academy owner balance to a teacher',
+  })
+  @ApiParam({ name: 'teacherId', description: 'Teacher user identifier' })
+  async assignCreditsToTeacher(
+    @Param('teacherId') teacherId: string,
+    @Body() dto: { academyId: string; amount: number; reason?: string },
+    @Req() request: Request,
+  ) {
+    const ownerId = (request as RequestWithUser).user?.id as string;
+    await this.zoomCreditsService.assignCreditsToTeacher(
+      teacherId,
+      dto.academyId,
+      dto.amount,
+      ownerId,
+      dto.reason,
+    );
+    return { success: true, message: 'Credits assigned successfully' };
   }
 
   @Get('teacher/:teacherId/audit-log')

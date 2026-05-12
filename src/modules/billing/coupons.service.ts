@@ -32,14 +32,16 @@ export class CouponsService {
 
   // ----- Admin CRUD -----
 
-  async list(opts: {
-    activeOnly?: boolean;
-    marketingOnly?: boolean;
-    page?: number;
-    limit?: number;
-    search?: string;
-    appliesTo?: string;
-  } = {}) {
+  async list(
+    opts: {
+      activeOnly?: boolean;
+      marketingOnly?: boolean;
+      page?: number;
+      limit?: number;
+      search?: string;
+      appliesTo?: string;
+    } = {},
+  ) {
     // When called without pagination opts (e.g. marketing banner), return raw array
     const paginate = opts.page !== undefined || opts.limit !== undefined;
     const page = Math.max(1, opts.page ?? 1);
@@ -49,6 +51,7 @@ export class CouponsService {
     if (opts.activeOnly) where.active = true;
     if (opts.marketingOnly) {
       where.highlight = true;
+      where.active = true;
       where.AND = [
         { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
         { OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] },
