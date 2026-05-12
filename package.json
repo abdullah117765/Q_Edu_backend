@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "stripe:listen": "docker run --rm -v \"%USERPROFILE%\\.config\\stripe:/root/.config/stripe\" stripe/stripe-cli:latest listen --forward-to host.docker.internal:3000/api/billing/webhook"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
