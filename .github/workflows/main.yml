@@ -103,7 +103,7 @@ jobs:
     name: Deploy to VPS
     runs-on: ubuntu-latest
     needs: docker
-    if: ${{ github.ref == 'refs/heads/production' && github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -141,8 +141,8 @@ jobs:
             cd /opt/qedu
 
             cat > .env <<'EOF'
-            FRONTEND_IMAGE=ghcr.io/junaid-ikram/saas:production
-            BACKEND_IMAGE=ghcr.io/abdullah117765/q_edu_backend:production
+            FRONTEND_IMAGE=ghcr.io/junaid-ikram/saas:latest
+            BACKEND_IMAGE=ghcr.io/abdullah117765/q_edu_backend:latest
             MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE || 'qedu' }}
             MYSQL_USER=${{ secrets.MYSQL_USER || 'qedu' }}
             MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD || 'change-this-qedu-db-password' }}
@@ -199,13 +199,8 @@ jobs:
               echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             fi
 
-            docker compose pull mysql adminer backend nginx
-            docker compose up -d mysql adminer backend
-
-            if docker compose pull frontend; then
-              docker compose up -d frontend nginx
-            else
-              echo "Frontend image is not available yet; backend is running and nginx will start after frontend deploy."
-            fi
+            docker compose pull backend
+            docker compose up -d --no-deps backend
+            docker compose up -d nginx
 
             docker image prune -f
