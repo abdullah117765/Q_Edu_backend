@@ -37,7 +37,7 @@ services:
       - qedu
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/junaid-ikram/saas:production}
+    image: ${FRONTEND_IMAGE:-ghcr.io/abdullah117765/saas:latest}
     restart: unless-stopped
     expose:
       - "3000"

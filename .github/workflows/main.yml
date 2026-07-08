@@ -141,7 +141,7 @@ jobs:
             cd /opt/qedu
 
             cat > .env <<'EOF'
-            FRONTEND_IMAGE=ghcr.io/junaid-ikram/saas:latest
+            FRONTEND_IMAGE=ghcr.io/abdullah117765/saas:latest
             BACKEND_IMAGE=ghcr.io/abdullah117765/q_edu_backend:latest
             MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE || 'qedu' }}
             MYSQL_USER=${{ secrets.MYSQL_USER || 'qedu' }}
@@ -201,6 +201,6 @@ jobs:
 
             docker compose pull backend
             docker compose up -d --no-deps backend
-            docker compose up -d nginx
+            docker compose up -d --no-deps nginx
 
             docker image prune -f
